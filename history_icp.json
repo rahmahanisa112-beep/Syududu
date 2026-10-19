@@ -103,6 +103,32 @@
       "exit_time": null,
       "result_r": null,
       "result": null
+    },
+    {
+      "signal_id": "GALA-USDT-SWAP|SHORT|1792427400000|ICP",
+      "symbol": "GALA-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "15m",
+      "setup": "ICP_PULLBACK",
+      "note": "HTF 1H: BEAR (EMA50>EMA200)\n15m Pullback: EMA21 @ 0.00189008\nRSI: 52.2 (Diskon)\nVol: 1.72x Avg",
+      "signal_candle_time": 1792427400000,
+      "signal_candle_iso": "2026-10-19T16:30:00+00:00",
+      "created_at": "2026-10-19T16:48:28.191754+00:00",
+      "entry": 0.001895,
+      "sl": 0.00192,
+      "tp": 0.001857,
+      "rr": 1.5,
+      "atr": 1.4366243417450041e-05,
+      "sl_atr": 1.7656838103298989,
+      "risk_pct": 1.338588043137204,
+      "rsi": 52.21865153430975,
+      "volume_ratio": 1.7209498920294488,
+      "risk_usdt": 10.0,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null
     }
   ],
   "closed": []
