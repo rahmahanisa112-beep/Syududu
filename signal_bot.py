@@ -290,7 +290,7 @@ def build_icp_signal(inst, cs_15m, cs_1h, meta):
         
     note = (
         f"HTF 1H: {'BULL' if is_bull_1h else 'BEAR'} (EMA50>EMA200)\n"
-        f"15m Pullback: EMA21 @ {ema21_15m:.1f}\n"
+        f"15m Pullback: EMA21 @ {ema21_15m:g}\n"     # ← MENJADI :g
         f"RSI: {rsi_val:.1f} (Diskon)\n"
         f"Vol: {cur_vol/vol_avg:.2f}x Avg"
     )
