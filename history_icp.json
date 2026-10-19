@@ -103,7 +103,9 @@
       "exit_time": null,
       "result_r": null,
       "result": null
-    },
+    }
+  ],
+  "closed": [
     {
       "signal_id": "GALA-USDT-SWAP|SHORT|1792427400000|ICP",
       "symbol": "GALA-USDT-SWAP",
@@ -124,12 +126,11 @@
       "rsi": 52.21865153430975,
       "volume_ratio": 1.7209498920294488,
       "risk_usdt": 10.0,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null
+      "status": "CLOSED",
+      "exit_price": 0.00192,
+      "exit_time": "2026-10-19T22:05:00+00:00",
+      "result_r": -1.0,
+      "result": "LOSS"
     }
-  ],
-  "closed": []
+  ]
 }
