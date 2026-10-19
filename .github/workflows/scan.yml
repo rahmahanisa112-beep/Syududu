@@ -1,0 +1,50 @@
+name: AlphaQuant ICP Scanner
+
+on:
+  schedule:
+    # Jalankan otomatis setiap 15 menit (sesuai timeframe 15m)
+    - cron: '*/15 * * * *'
+  
+  # Memungkinkan Anda menjalankan bot secara manual dari tab "Actions"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # Batas waktu 10 menit per scan (safety)
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pandas numpy
+
+    - name: Run AlphaQuant ICP Bot
+      env:
+        # --- KONFIGURASI TELEGRAM (WAJIB DIISI VIA SECRETS) ---
+        # Pastikan nama secret di GitHub Settings Anda persis seperti ini (tanpa typo)
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        
+        # --- KONFIGURASI BOT (Mode Sekali Jalan) ---
+        RUN_FOREVER: "0"          # PENTING: 0 agar bot scan 1x lalu mati (dikontrol cron)
+        SCAN_INTERVAL: "10"       
+        TARGET_RR: "1.5"          # Risk:Reward 1:1.5 untuk Win Rate tinggi
+        RISK_PER_TRADE: "0.01"    # Risiko 1% per trade
+        ACCOUNT_EQUITY: "1000"    # Modal simulasi
+        MAX_OPEN: "5"             # Maksimal 5 posisi bersamaan
+        FEE_PER_SIDE: "0.0005"    # Fee taker OKX (0.05%)
+        TOP_PAIRS: "20"           # Fokus 20 pair teratas
+        
+      run: |
+        echo "Memulai siklus scan AlphaQuant ICP..."
+        # Pastikan nama file python Anda adalah 'signal_bot.py'
+        python signal_bot.py
