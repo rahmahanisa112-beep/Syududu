@@ -2,7 +2,7 @@ name: AlphaQuant ICP Scanner & Recap
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # Scan setiap 15 menit
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # PENTING: Izin untuk menyimpan file history ke repo
+      contents: write
 
     steps:
     - name: Checkout Repository
@@ -48,9 +48,12 @@ jobs:
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
-        # Tambahkan file history ke staging
-        git add history_icp.json
-        
-        # Commit dan push jika ada perubahan
-        git commit -m " Auto-update: history_icp.json" || echo "Tidak ada perubahan history untuk di-commit."
-        git push
+        # Cek apakah file history ada
+        if [ -f "history_icp.json" ]; then
+          echo "File history ditemukan, menyimpan ke repository..."
+          git add history_icp.json
+          git commit -m " Auto-update: history_icp.json" || echo "Tidak ada perubahan untuk di-commit."
+          git push
+        else
+          echo "️ File history_icp.json tidak ada (belum ada sinyal). Skip commit."
+        fi
