@@ -1,17 +1,16 @@
-name: AlphaQuant ICP Scanner
+name: AlphaQuant ICP Scanner & Recap
 
 on:
   schedule:
-    # Jalankan otomatis setiap 15 menit (sesuai timeframe 15m)
-    - cron: '*/15 * * * *'
-  
-  # Memungkinkan Anda menjalankan bot secara manual dari tab "Actions"
+    - cron: '*/15 * * * *' # Scan setiap 15 menit
   workflow_dispatch:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Batas waktu 10 menit per scan (safety)
+    timeout-minutes: 10
+    permissions:
+      contents: write # PENTING: Izin untuk menyimpan file history ke repo
 
     steps:
     - name: Checkout Repository
@@ -29,22 +28,29 @@ jobs:
 
     - name: Run AlphaQuant ICP Bot
       env:
-        # --- KONFIGURASI TELEGRAM (WAJIB DIISI VIA SECRETS) ---
-        # Pastikan nama secret di GitHub Settings Anda persis seperti ini (tanpa typo)
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        
-        # --- KONFIGURASI BOT (Mode Sekali Jalan) ---
-        RUN_FOREVER: "0"          # PENTING: 0 agar bot scan 1x lalu mati (dikontrol cron)
-        SCAN_INTERVAL: "10"       
-        TARGET_RR: "1.5"          # Risk:Reward 1:1.5 untuk Win Rate tinggi
-        RISK_PER_TRADE: "0.01"    # Risiko 1% per trade
-        ACCOUNT_EQUITY: "1000"    # Modal simulasi
-        MAX_OPEN: "5"             # Maksimal 5 posisi bersamaan
-        FEE_PER_SIDE: "0.0005"    # Fee taker OKX (0.05%)
-        TOP_PAIRS: "20"           # Fokus 20 pair teratas
-        
+        RUN_FOREVER: "0"
+        SCAN_INTERVAL: "10"
+        TARGET_RR: "1.5"
+        RISK_PER_TRADE: "0.01"
+        ACCOUNT_EQUITY: "1000"
+        MAX_OPEN: "5"
+        FEE_PER_SIDE: "0.0005"
+        TOP_PAIRS: "20"
       run: |
         echo "Memulai siklus scan AlphaQuant ICP..."
-        # Pastikan nama file python Anda adalah 'signal_bot.py'
         python signal_bot.py
+
+    - name: Save History to Repository (Auto-Commit)
+      run: |
+        # Konfigurasi Git
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        
+        # Tambahkan file history ke staging
+        git add history_icp.json
+        
+        # Commit dan push jika ada perubahan
+        git commit -m " Auto-update: history_icp.json" || echo "Tidak ada perubahan history untuk di-commit."
+        git push
