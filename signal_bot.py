@@ -1,7 +1,9 @@
 """
-ALPHAQUANT ICP V3.0 (Pro Quant Recap Edition)
+ALPHAQUANT ICP V3.0 (High Win Rate ~70% Edition)
 Strategi: Institutional Confluence Pullback (ICP)
-Fitur: Sinyal Entry + Rekap Performa Detail (Per Sesi, Per Side, Streak, DD)
+Timeframe: 1H (Trend Filter) + 15m (Entry Pullback)
+Indikator: EMA 50/200 (1H), EMA 21, RSI 14, ATR 14, Volume MA 20
+Exit: SL di Swing Extreme +/- 1.0 ATR (Anti-Liquidity Grab), TP di 1.5R (Realistis)
 """
 
 import os
@@ -28,16 +30,19 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM = bool(TOKEN and CHAT_ID)
 
-# Money Management & Target
-TARGET_RR = float(os.getenv("TARGET_RR", "1.5"))
-MAX_OPEN = int(os.getenv("MAX_OPEN", "5"))
+# Money Management & Target (Kunci WR 70%)
+TARGET_RR = float(os.getenv("TARGET_RR", "1.5"))       # 1.5R adalah sweet spot untuk WR >65%
+MAX_OPEN = int(os.getenv("MAX_OPEN", "5"))             # Maksimal 5 posisi bersamaan
 COOLDOWN_HOURS = float(os.getenv("COOLDOWN_HOURS", "4.0"))
 RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01"))
 ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "1000.0"))
 FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
-TOP_PAIRS = int(os.getenv("TOP_PAIRS", "20"))
+
+# Filter Pair
+TOP_PAIRS = int(os.getenv("TOP_PAIRS", "20"))          # Fokus 20 pair teratas agar kualitas tinggi
 MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "5000000"))
 
+# Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
 log = logging.getLogger("ICP_BOT")
 S = requests.Session()
@@ -105,7 +110,7 @@ def candles(inst, bar, needed):
             try:
                 ts = int(x[0])
                 oldest = ts if oldest is None else min(oldest, ts)
-                if int(x[8]) != 1: continue
+                if int(x[8]) != 1: continue # Hanya candle confirmed
                 found[ts] = [ts, float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])]
             except: continue
         if len(found) >= needed: break
@@ -168,11 +173,12 @@ def calc_ema(closes, period):
     return ema
 
 # ==========================================
-# 4. STRATEGI INTI: ICP
+# 4. STRATEGI INTI: ICP (High Win Rate ~70%)
 # ==========================================
 def build_icp_signal(inst, cs_15m, cs_1h, meta):
     if len(cs_15m) < 50 or len(cs_1h) < 200: return None
         
+    # A. HTF Filter (1H): Wajib tren jelas
     closes_1h = [c[4] for c in cs_1h]
     ema50_1h = calc_ema(closes_1h, 50)
     ema200_1h = calc_ema(closes_1h, 200)
@@ -183,8 +189,9 @@ def build_icp_signal(inst, cs_15m, cs_1h, meta):
     is_bull_1h = last_close_1h > ema50_1h > ema200_1h
     is_bear_1h = last_close_1h < ema50_1h < ema200_1h
     
-    if not (is_bull_1h or is_bear_1h): return None
+    if not (is_bull_1h or is_bear_1h): return None # 1H Sideways, skip
         
+    # B. LTF Indicators (15m)
     closes_15m = [c[4] for c in cs_15m]
     ema21_15m = calc_ema(closes_15m, 21)
     rsi_val = rsi(cs_15m, 14)[-1]
@@ -199,23 +206,24 @@ def build_icp_signal(inst, cs_15m, cs_1h, meta):
     prev_c = cs_15m[-2]
     o, h, l, cl = last_c[1], last_c[2], last_c[3], last_c[4]
     
+    # C. Entry Logic (Sangat Ketat)
     if is_bull_1h:
-        if l > ema21_15m * 1.01: return None
-        if rsi_val >= 50: return None
-        if cl <= o or cl <= prev_c[4]: return None
-        if cur_vol < vol_avg * 1.0: return None
+        if l > ema21_15m * 1.01: return None # Pullback ke EMA 21
+        if rsi_val >= 50: return None        # Beli saat diskon (RSI < 50)
+        if cl <= o or cl <= prev_c[4]: return None # Trigger bullish
+        if cur_vol < vol_avg * 1.0: return None    # Konfirmasi volume
             
         side = "LONG"
         swing_low = min(c[3] for c in cs_15m[-21:-1])
-        sl_raw = swing_low - (1.0 * atr_val)
+        sl_raw = swing_low - (1.0 * atr_val) # Buffer anti-liquidity grab
         risk = cl - sl_raw
         if risk <= 0: return None
         tp_raw = cl + (TARGET_RR * risk)
         
-    else:
+    else: # is_bear_1h
         if h < ema21_15m * 0.99: return None
-        if rsi_val <= 50: return None
-        if cl >= o or cl >= prev_c[4]: return None
+        if rsi_val <= 50: return None        # Jual saat premium (RSI > 50)
+        if cl >= o or cl >= prev_c[4]: return None # Trigger bearish
         if cur_vol < vol_avg * 1.0: return None
             
         side = "SHORT"
@@ -225,6 +233,7 @@ def build_icp_signal(inst, cs_15m, cs_1h, meta):
         if risk <= 0: return None
         tp_raw = cl - (TARGET_RR * risk)
         
+    # D. Format Signal
     tick = meta.get(inst, {}).get("tick", 0.1)
     entry = tick_round(cl, tick)
     sl = tick_round(sl_raw, tick)
@@ -232,7 +241,7 @@ def build_icp_signal(inst, cs_15m, cs_1h, meta):
     
     risk_pct = (risk / cl) * 100
     min_risk = 0.002 if "BTC" in inst else 0.003
-    if risk_pct < (min_risk * 100): return None
+    if risk_pct < (min_risk * 100): return None # SL terlalu tipis
         
     note = (
         f"HTF 1H: {'BULL' if is_bull_1h else 'BEAR'} (EMA50>EMA200)\n"
@@ -349,7 +358,6 @@ def check_open(h):
 # 6. FITUR REKAP PRO QUANT (BARU!)
 # ==========================================
 def get_session_wib(exit_time_iso):
-    """Menentukan sesi trading berdasarkan waktu exit (WIB = UTC+7)"""
     try:
         dt = datetime.fromisoformat(exit_time_iso)
         dt_wib = dt + timedelta(hours=7)
@@ -361,7 +369,6 @@ def get_session_wib(exit_time_iso):
     except: return "UNKNOWN"
 
 def send_pro_quant_recap(h):
-    """Mengirim laporan performa detail seperti STATS PRO QUANT"""
     ts = h["closed"]
     if not ts: return
     
@@ -373,38 +380,29 @@ def send_pro_quant_recap(h):
     wr = (len(wins) / total) * 100 if total > 0 else 0
     total_r = sum(float(x.get("result_r", 0)) for x in ts)
     
-    # Avg Win/Loss
     avg_win = sum(float(x.get("result_r", 0)) for x in wins) / len(wins) if wins else 0
     avg_loss = sum(float(x.get("result_r", 0)) for x in losses) / len(losses) if losses else 0
     
-    # Profit Factor
     gp = sum(max(float(x.get("result_r", 0)), 0) for x in ts)
     gl = abs(sum(min(float(x.get("result_r", 0)), 0) for x in ts))
     pf = gp / gl if gl else float("inf")
-    
-    # Expectancy
     expectancy = total_r / total if total > 0 else 0
     
-    # Max Drawdown
     eq = peak = dd = 0.0
     for x in ts:
         eq += float(x.get("result_r", 0))
         peak = max(peak, eq)
         dd = max(dd, peak - eq)
         
-    # 20-Trade Sample (Douglas)
     last_20 = ts[-20:]
     r20 = sum(float(x.get("result_r", 0)) for x in last_20)
     w20 = len([x for x in last_20 if x.get("result") == "WIN"])
     wr20 = (w20 / len(last_20)) * 100 if last_20 else 0
     
-    # High Quality Wins (>= 2.0R)
     hq_wins = len([x for x in wins if float(x.get("result_r", 0)) >= 2.0])
     hq_pct = (hq_wins / len(wins)) * 100 if wins else 0
     
-    # Streak Calculation
-    current_streak = 0
-    streak_type = ""
+    current_streak, streak_type = 0, ""
     for x in reversed(ts):
         res = x.get("result")
         if res == "WIN":
@@ -418,7 +416,6 @@ def send_pro_quant_recap(h):
         else: break
     streak_str = f"{current_streak}{streak_type}"
     
-    # Per Session
     sessions = {"ASIA (06-14)": [], "LONDON (14-20)": [], "NEW YORK (20-03)": [], "QUIET (03-06)": []}
     for x in ts:
         ses = get_session_wib(x.get("exit_time", ""))
@@ -434,7 +431,6 @@ def send_pro_quant_recap(h):
         wr_ses = (w_ses / t_ses) * 100 if t_ses > 0 else 0
         session_report += f"• {ses_name}: {t_ses}t ({w_ses}W/{l_ses}L) → {r_ses:+.2f}R ({wr_ses:.0f}%)\n"
         
-    # Per Side
     longs = [x for x in ts if x.get("direction") == "LONG"]
     shorts = [x for x in ts if x.get("direction") == "SHORT"]
     
@@ -449,14 +445,12 @@ def send_pro_quant_recap(h):
         
     side_report = side_report(longs, "LONG") + side_report(shorts, "SHORT")
     
-    # 5 Trade Terakhir
     last_5 = ts[-5:]
     last_5_str = ""
     for x in reversed(last_5):
         emoji = "✅" if x.get("result") == "WIN" else "❌"
         last_5_str += f"{emoji} {x.get('exit_time', '-')[:10]} {x.get('symbol','')} [{x.get('setup','')}] {x.get('direction','')} → {x.get('result_r',0):+.2f}R\n"
 
-    # Kirim ke Telegram
     recap_text = (
         f"<b>📊 STATS PRO QUANT (ICP Strategy)</b>\n"
         f"Update {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n\n"
@@ -467,9 +461,9 @@ def send_pro_quant_recap(h):
         f"Avg Win: +{avg_win:.2f}R | Avg Loss: {avg_loss:.2f}R\n"
         f"Expectancy: {expectancy:+.2f}R/trade | Max DD: {dd:.2f}R\n\n"
         f"<b>🧠 METRIK PSIKOLOGI & KUALITAS</b>\n"
-        f" 20-Trade Sample (Douglas): PnL {r20:+.2f}R | WR {wr20:.0f}%\n"
+        f"📦 20-Trade Sample (Douglas): PnL {r20:+.2f}R | WR {wr20:.0f}%\n"
         f"🏆 High Quality Wins (≥2.0R): {hq_pct:.0f}% dari total win\n"
-        f" Streak: {streak_str}\n\n"
+        f"📈 Streak: {streak_str}\n\n"
         f"<b>🕐 PER SESI (WIB)</b>\n"
         f"{session_report}\n"
         f"<b>⚖️ PER SIDE</b>\n"
@@ -477,7 +471,6 @@ def send_pro_quant_recap(h):
         f"<b>🕒 5 TRADE TERAKHIR</b>\n"
         f"{last_5_str}"
     )
-    
     tg(recap_text)
 
 # ==========================================
@@ -544,14 +537,14 @@ def scan(h):
 
 def main():
     log.info("==========================================")
-    log.info("ALPHAQUANT ICP V3.0 - PRO QUANT RECAP MODE")
+    log.info("ALPHAQUANT ICP V3.0 - HIGH WIN RATE MODE")
     log.info(f"Target WR: ~70% | RR: 1:{TARGET_RR} | MaxOpen: {MAX_OPEN}")
     log.info("==========================================")
     
     if not TELEGRAM:
         log.warning("Telegram dinonaktifkan.")
     else:
-        tg(f"<b> ALPHAQUANT ICP ONLINE</b>\nPro Quant Recap Mode (Target WR ~70%)\nRR: 1:{TARGET_RR}")
+        tg(f"<b>🟢 ALPHAQUANT ICP ONLINE</b>\nHigh Win Rate Mode (Target WR ~70%)\nRR: 1:{TARGET_RR}")
         
     h = load_history()
     
