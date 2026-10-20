@@ -103,6 +103,32 @@
       "exit_time": null,
       "result_r": null,
       "result": null
+    },
+    {
+      "signal_id": "HMSTR-USDT-SWAP|SHORT|1792453500000|ICP",
+      "symbol": "HMSTR-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "15m",
+      "setup": "ICP_PULLBACK",
+      "note": "HTF 1H: BEAR (EMA50>EMA200)\n15m Pullback: EMA21 @ 0.00014344\nRSI: 54.8 (Diskon)\nVol: 2.61x Avg",
+      "signal_candle_time": 1792453500000,
+      "signal_candle_iso": "2026-10-19T23:45:00+00:00",
+      "created_at": "2026-10-20T00:04:24.816364+00:00",
+      "entry": 0.0001437,
+      "sl": 0.0001448,
+      "tp": 0.000142,
+      "rr": 1.5,
+      "atr": 4.444931058862032e-07,
+      "sl_atr": 2.574827574894319,
+      "risk_pct": 0.7964461418832404,
+      "rsi": 54.832698571418746,
+      "volume_ratio": 2.608207265561551,
+      "risk_usdt": 10.0,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null
     }
   ],
   "closed": [
