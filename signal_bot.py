@@ -36,8 +36,8 @@ MAX_OPEN = int(os.getenv("MAX_OPEN", "5"))
 RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) # 0.5% - 1% sesuai PDF
 ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "1000.0"))
 FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
-TOP_PAIRS = int(os.getenv("TOP_PAIRS", "20"))
-MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "5000000"))
+TOP_PAIRS = int(os.getenv("TOP_PAIRS", "50"))
+MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "4000000"))
 
 # Parameter Strategi (Sesuai PDF)
 RSI_PERIOD = 7
