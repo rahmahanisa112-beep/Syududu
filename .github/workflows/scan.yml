@@ -35,7 +35,7 @@ jobs:
         ACCOUNT_EQUITY: "1000"
         MAX_OPEN: "5"
         FEE_PER_SIDE: "0.0005"
-        TOP_PAIRS: "20"
+        TOP_PAIRS: "50"
       run: |
         echo "Memulai siklus scan Scalp 15m..."
         python signal_bot.py
