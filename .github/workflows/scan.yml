@@ -1,8 +1,8 @@
-name: AlphaQuant Scalp 15m Scanner
+name: AlphaQuant Multi-Strategy Scanner
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # Scan setiap 15 menit
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # Izin untuk commit history
+      contents: write
 
     steps:
     - name: Checkout Repository
@@ -30,14 +30,14 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         RUN_FOREVER: "0"
         SCAN_INTERVAL: "10"
-        TARGET_RR: "3.0"
         RISK_PER_TRADE: "0.01"
         ACCOUNT_EQUITY: "1000"
         MAX_OPEN: "5"
         FEE_PER_SIDE: "0.0005"
         TOP_PAIRS: "50"
+        MIN_VOLUME_USDT: "3000000"
       run: |
-        echo "Memulai siklus scan Scalp 15m..."
+        echo "Memulai siklus scan Multi-Strategy..."
         python signal_bot.py
 
     - name: Save History to Repository
@@ -45,10 +45,10 @@ jobs:
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
-        if [ -f "history_scalp.json" ]; then
-          echo "Menyimpan history_scalp.json..."
-          git add history_scalp.json
-          git commit -m " Auto-update: history_scalp.json" || echo "Tidak ada perubahan."
+        if [ -f "history_multi.json" ]; then
+          echo "Menyimpan history_multi.json..."
+          git add history_multi.json
+          git commit -m " Auto-update: history_multi.json" || echo "Tidak ada perubahan."
           git push
         else
           echo "File history belum ada."
