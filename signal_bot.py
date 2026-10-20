@@ -1,9 +1,7 @@
 """
-ALPHAQUANT SCALP 15M STRICT
-Strategi: Checklist Scalping 15m Versi Ketat (High Win Rate)
-Berdasarkan: Checklist_Strategy_Scalping_15m.pdf
-Indikator: RSI(7), EMA(50), EMA(200), ATR(14), SMA(ATR, 50)
-Exit: SL 1.0 ATR, TP 3.0 ATR, Max Hold 12 Candle (3 Jam)
+ALPHAQUANT MULTI-STRATEGY BOT V1.0
+Strategy 1: SCALP 15M STRICT (RSI 7, ATR Ratio, RR 1:3)
+Strategy 2: ILM INTRADAY (EMA 200/50, Stoch RSI, Time Filter London/NY, RR 1:1.75)
 """
 
 import os
@@ -18,7 +16,7 @@ from datetime import datetime, timezone, timedelta
 # 1. KONFIGURASI DASAR
 # ==========================================
 OKX = "https://www.okx.com"
-HISTORY_FILE = "history_scalp.json" # Ganti nama file agar tidak bentrok dengan history lama
+HISTORY_FILE = "history_multi.json" 
 SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", "60"))
 RUN_FOREVER = os.getenv("RUN_FOREVER", "1") == "1"
 RETRIES = 3
@@ -31,27 +29,17 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM = bool(TOKEN and CHAT_ID)
 
 # Money Management
-TARGET_RR = 3.0 # Sesuai PDF: TP 3.0 x ATR
 MAX_OPEN = int(os.getenv("MAX_OPEN", "5"))
-RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) # 0.5% - 1% sesuai PDF
+RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01"))
 ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "1000.0"))
 FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
 TOP_PAIRS = int(os.getenv("TOP_PAIRS", "50"))
-MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "4000000"))
-
-# Parameter Strategi (Sesuai PDF)
-RSI_PERIOD = 7
-EMA_FAST = 50
-EMA_SLOW = 200
-ATR_PERIOD = 14
-ATR_SMA_PERIOD = 50
-ATR_RATIO_MIN = 1.20
-MAX_HOLD_CANDLES = 12 # 12 candle 15m = 3 Jam
+MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "3000000"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
-log = logging.getLogger("SCALP_BOT")
+log = logging.getLogger("MULTI_BOT")
 S = requests.Session()
-S.headers.update({"User-Agent": "ALPHAQUANT-SCALP-V1"})
+S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1"})
 _LAST_REQ = [0.0]
 
 # ==========================================
@@ -131,7 +119,7 @@ def tick_round(x, tick):
     return round(round(x / tick) * tick, decimals + 2)
 
 # ==========================================
-# 3. INDIKATOR TEKNIS (SESUAI PDF)
+# 3. INDIKATOR TEKNIS
 # ==========================================
 def calc_ema(closes, period):
     if len(closes) < period: return None
@@ -141,75 +129,105 @@ def calc_ema(closes, period):
         ema = price * k + ema * (1 - k)
     return ema
 
-def calc_rsi_list(closes, period=7):
-    """Mengembalikan list RSI sepanjang data closes"""
+def calc_rsi_list(closes, period=14):
     rsi_list = [None] * len(closes)
     if len(closes) < period + 1: return rsi_list
-    
     gains, losses = [], []
     for i in range(1, len(closes)):
         ch = closes[i] - closes[i-1]
         gains.append(max(ch, 0))
         losses.append(max(-ch, 0))
-        
-    # Initial Average
     avg_gain = sum(gains[:period]) / period
     avg_loss = sum(losses[:period]) / period
-    
-    # First RSI
     if avg_loss == 0: rsi_list[period] = 100.0
-    else:
-        rs = avg_gain / avg_loss
-        rsi_list[period] = 100 - 100 / (1 + rs)
-        
-    # Subsequent RSI (Wilder's Smoothing)
+    else: rsi_list[period] = 100 - 100 / (1 + avg_gain / avg_loss)
     for i in range(period, len(gains)):
         avg_gain = (avg_gain * (period - 1) + gains[i]) / period
         avg_loss = (avg_loss * (period - 1) + losses[i]) / period
         if avg_loss == 0: rsi_list[i+1] = 100.0
-        else:
-            rs = avg_gain / avg_loss
-            rsi_list[i+1] = 100 - 100 / (1 + rs)
+        else: rsi_list[i+1] = 100 - 100 / (1 + avg_gain / avg_loss)
     return rsi_list
 
 def calc_atr_list(cs, period=14):
-    """Mengembalikan list ATR sepanjang data cs"""
     atr_list = [None] * len(cs)
     if len(cs) < period + 1: return atr_list
-    
     tr_list = []
     for i in range(1, len(cs)):
         h, l, c_prev = cs[i][2], cs[i][3], cs[i-1][4]
         tr = max(h - l, abs(h - c_prev), abs(l - c_prev))
         tr_list.append(tr)
-        
-    # Initial ATR (SMA of TR)
     atr = sum(tr_list[:period]) / period
     atr_list[period] = atr
-    
-    # Subsequent ATR (Wilder's Smoothing)
     for i in range(period, len(tr_list)):
         atr = (atr * (period - 1) + tr_list[i]) / period
         atr_list[i+1] = atr
     return atr_list
 
 def calc_sma(values, period):
-    """Simple Moving Average"""
     if len(values) < period: return None
     return sum(values[-period:]) / period
 
+def calc_stoch_rsi(closes, rsi_period=14, stoch_period=14, k_smooth=3, d_smooth=3):
+    """Stochastic RSI (14, 14, 3, 3)"""
+    rsi_vals = calc_rsi_list(closes, rsi_period)
+    valid_rsi = [x for x in rsi_vals if x is not None]
+    if len(valid_rsi) < stoch_period: return None, None
+    
+    # Calculate Stoch of RSI
+    stoch_k_raw = []
+    for i in range(len(rsi_vals)):
+        if rsi_vals[i] is None:
+            stoch_k_raw.append(None)
+            continue
+        # Look back stoch_period
+        window = []
+        for j in range(max(0, i - stoch_period + 1), i + 1):
+            if rsi_vals[j] is not None:
+                window.append(rsi_vals[j])
+        if len(window) < stoch_period:
+            stoch_k_raw.append(None)
+            continue
+        min_rsi = min(window)
+        max_rsi = max(window)
+        if max_rsi == min_rsi: stoch_k_raw.append(50.0)
+        else: stoch_k_raw.append(100 * (rsi_vals[i] - min_rsi) / (max_rsi - min_rsi))
+        
+    # Smooth K
+    k_list = [None] * len(stoch_k_raw)
+    valid_k = [x for x in stoch_k_raw if x is not None]
+    if len(valid_k) < k_smooth: return None, None
+    
+    for i in range(len(stoch_k_raw)):
+        if stoch_k_raw[i] is None: continue
+        window = []
+        for j in range(max(0, i - k_smooth + 1), i + 1):
+            if stoch_k_raw[j] is not None: window.append(stoch_k_raw[j])
+        if len(window) == k_smooth: k_list[i] = sum(window) / k_smooth
+        
+    # Smooth D
+    d_list = [None] * len(k_list)
+    valid_k2 = [x for x in k_list if x is not None]
+    if len(valid_k2) < d_smooth: return None, None
+    
+    for i in range(len(k_list)):
+        if k_list[i] is None: continue
+        window = []
+        for j in range(max(0, i - d_smooth + 1), i + 1):
+            if k_list[j] is not None: window.append(k_list[j])
+        if len(window) == d_smooth: d_list[i] = sum(window) / d_smooth
+        
+    return k_list[-1], d_list[-1] # Return current K and D
+
 # ==========================================
-# 4. STRATEGI INTI: SCALP 15M STRICT
+# 4. STRATEGY 1: SCALP 15M STRICT
 # ==========================================
 def build_scalp_signal(inst, cs, meta):
-    # Butuh data cukup untuk EMA200 + SMA(ATR, 50)
     if len(cs) < 300: return None
-        
     closes = [c[4] for c in cs]
-    ema50 = calc_ema(closes, EMA_FAST)
-    ema200 = calc_ema(closes, EMA_SLOW)
-    rsi_list = calc_rsi_list(closes, RSI_PERIOD)
-    atr_list = calc_atr_list(cs, ATR_PERIOD)
+    ema50 = calc_ema(closes, 50)
+    ema200 = calc_ema(closes, 200)
+    rsi_list = calc_rsi_list(closes, 7)
+    atr_list = calc_atr_list(cs, 14)
     
     curr_c = cs[-1]
     prev_c = cs[-2]
@@ -221,68 +239,133 @@ def build_scalp_signal(inst, cs, meta):
     if curr_rsi is None or prev_rsi is None or curr_atr is None: return None
     if ema50 is None or ema200 is None: return None
     
-    # ATR Ratio Check: ATR(14) / SMA(ATR, 50) > 1.20
-    # Ambil 50 data ATR terakhir yang valid
-    valid_atrs = [x for x in atr_list[-ATR_SMA_PERIOD-10:] if x is not None] # +10 buffer
-    if len(valid_atrs) < ATR_SMA_PERIOD: return None
-    
-    sma_atr = calc_sma(valid_atrs, ATR_SMA_PERIOD)
+    valid_atrs = [x for x in atr_list[-60:] if x is not None]
+    if len(valid_atrs) < 50: return None
+    sma_atr = calc_sma(valid_atrs, 50)
     if sma_atr is None or sma_atr == 0: return None
     atr_ratio = curr_atr / sma_atr
+    if atr_ratio <= 1.20: return None 
     
-    if atr_ratio <= ATR_RATIO_MIN: return None # Volatilitas rendah, skip
-    
-    # --- LOGIKA ENTRY ---
     direction = None
-    sl_raw = 0
-    tp_raw = 0
-    
-    # LONG: Close > EMA50, Close > EMA200, RSI Cross di atas 30
     if curr_close > ema50 and curr_close > ema200:
         if curr_rsi > 30 and prev_rsi <= 30:
             direction = "LONG"
-            sl_raw = curr_close - (1.0 * curr_atr)
-            tp_raw = curr_close + (3.0 * curr_atr)
-            
-    # SHORT: Close < EMA50, Close < EMA200, RSI Cross di bawah 70
     elif curr_close < ema50 and curr_close < ema200:
         if curr_rsi < 70 and prev_rsi >= 70:
             direction = "SHORT"
-            sl_raw = curr_close + (1.0 * curr_atr)
-            tp_raw = curr_close - (3.0 * curr_atr)
             
     if direction is None: return None
     
-    # Format Signal
     tick = meta.get(inst, {}).get("tick", 0.1)
     entry = tick_round(curr_close, tick)
+    sl_raw = curr_close - (1.0 * curr_atr) if direction == "LONG" else curr_close + (1.0 * curr_atr)
+    tp_raw = curr_close + (3.0 * curr_atr) if direction == "LONG" else curr_close - (3.0 * curr_atr)
     sl = tick_round(sl_raw, tick)
     tp = tick_round(tp_raw, tick)
     
-    risk = abs(entry - sl)
-    risk_pct = (risk / entry) * 100
-    if risk_pct < 0.2: return None # SL terlalu tipis
-    
-    note = (
-        f"Trend: {'BULL' if direction == 'LONG' else 'BEAR'} (EMA50/200)\n"
-        f"RSI(7): {prev_rsi:.1f} -> {curr_rsi:.1f} (Cross)\n"
-        f"ATR Ratio: {atr_ratio:.2f} (>1.20)\n"
-        f"Max Hold: {MAX_HOLD_CANDLES} Candles (3 Jam)"
-    )
-    
     return {
         "signal_id": f"{inst}|{direction}|{curr_c[0]}|SCALP",
-        "symbol": inst, "direction": direction, "timeframe": "15m", "setup": "SCALP_15M_STRICT",
-        "note": note, "signal_candle_time": curr_c[0], "signal_candle_iso": iso(curr_c[0]),
-        "created_at": now(), "entry": entry, "sl": sl, "tp": tp, "rr": TARGET_RR,
-        "atr": curr_atr, "sl_atr": 1.0, "risk_pct": risk_pct, "rsi": curr_rsi,
-        "atr_ratio": atr_ratio, "risk_usdt": ACCOUNT_EQUITY * RISK_PER_TRADE,
+        "symbol": inst, "direction": direction, "timeframe": "15m", "setup": "SCALP_15M",
+        "strategy": "SCALP",
+        "note": f"RSI(7) Cross · ATR Ratio {atr_ratio:.2f}\nTrend: {'BULL' if direction=='LONG' else 'BEAR'}",
+        "signal_candle_time": curr_c[0], "signal_candle_iso": iso(curr_c[0]),
+        "created_at": now(), "entry": entry, "sl": sl, "tp": tp, "rr": 3.0,
+        "atr": curr_atr, "risk_pct": (abs(entry-sl)/entry)*100, "rsi": curr_rsi,
+        "risk_usdt": ACCOUNT_EQUITY * RISK_PER_TRADE,
         "status": "OPEN", "exit_price": None, "exit_time": None, "result_r": None, "result": None,
-        "max_hold_ms": MAX_HOLD_CANDLES * 15 * 60 * 1000 # 3 Jam dalam ms
+        "max_hold_ms": 12 * 15 * 60 * 1000 # 3 Jam
     }
 
 # ==========================================
-# 5. HISTORY & MONITORING
+# 5. STRATEGY 2: ILM INTRADAY (PDF)
+# ==========================================
+def is_valid_ilm_time(timestamp_ms):
+    """London: 14:00-17:00 WIB, NY: 19:30-22:30 WIB"""
+    dt_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+    dt_wib = dt_utc + timedelta(hours=7)
+    time_val = dt_wib.hour * 60 + dt_wib.minute
+    
+    # London: 14:00 (840) - 17:00 (1020)
+    # NY: 19:30 (1170) - 22:30 (1350)
+    if (840 <= time_val <= 1020) or (1170 <= time_val <= 1350):
+        return True
+    return False
+
+def build_ilm_signal(inst, cs_15m, cs_1h, meta):
+    if len(cs_15m) < 250 or len(cs_1h) < 250: return None
+    
+    # 1. Time Filter (WAJIB)
+    if not is_valid_ilm_time(cs_15m[-1][0]): return None
+    
+    # 2. 1H Bias (EMA 200)
+    closes_1h = [c[4] for c in cs_1h]
+    ema200_1h = calc_ema(closes_1h, 200)
+    if ema200_1h is None: return None
+    last_close_1h = closes_1h[-1]
+    
+    is_bull_1h = last_close_1h > ema200_1h
+    is_bear_1h = last_close_1h < ema200_1h
+    if not (is_bull_1h or is_bear_1h): return None
+    
+    # 3. 15M Indicators
+    closes_15m = [c[4] for c in cs_15m]
+    ema50_15m = calc_ema(closes_15m, 50)
+    atr_list = calc_atr_list(cs_15m, 14)
+    curr_atr = atr_list[-1]
+    
+    if ema50_15m is None or curr_atr is None: return None
+    
+    # Stoch RSI (14, 14, 3, 3)
+    k_curr, d_curr = calc_stoch_rsi(closes_15m, 14, 14, 3, 3)
+    k_prev, d_prev = calc_stoch_rsi(closes_15m[:-1], 14, 14, 3, 3) # Previous candle
+    
+    if k_curr is None or d_curr is None or k_prev is None: return None
+    
+    curr_c = cs_15m[-1]
+    prev_c = cs_15m[-2]
+    curr_close = curr_c[4]
+    
+    direction = None
+    
+    # 4. Entry Logic
+    if is_bull_1h:
+        # Price near EMA 50 (within 0.5%)
+        if abs(curr_close - ema50_15m) / ema50_15m > 0.005: return None
+        # Stoch RSI Cross from Oversold (<20)
+        if k_prev < 20 and k_curr > d_curr and k_prev <= d_prev:
+            direction = "LONG"
+            
+    elif is_bear_1h:
+        if abs(curr_close - ema50_15m) / ema50_15m > 0.005: return None
+        # Stoch RSI Cross from Overbought (>80)
+        if k_prev > 80 and k_curr < d_curr and k_prev >= d_prev:
+            direction = "SHORT"
+            
+    if direction is None: return None
+    
+    # 5. SL/TP (1.2 ATR / 2.1 ATR)
+    tick = meta.get(inst, {}).get("tick", 0.1)
+    entry = tick_round(curr_close, tick)
+    sl_raw = curr_close - (1.2 * curr_atr) if direction == "LONG" else curr_close + (1.2 * curr_atr)
+    tp_raw = curr_close + (2.1 * curr_atr) if direction == "LONG" else curr_close - (2.1 * curr_atr)
+    sl = tick_round(sl_raw, tick)
+    tp = tick_round(tp_raw, tick)
+    
+    return {
+        "signal_id": f"{inst}|{direction}|{curr_c[0]}|ILM",
+        "symbol": inst, "direction": direction, "timeframe": "15m", "setup": "ILM_INTRADAY",
+        "strategy": "ILM",
+        "note": f"1H {'BULL' if is_bull_1h else 'BEAR'} · Stoch RSI Cross\nPrice @ EMA50 15m",
+        "signal_candle_time": curr_c[0], "signal_candle_iso": iso(curr_c[0]),
+        "created_at": now(), "entry": entry, "sl": sl, "tp": tp, "rr": 1.75,
+        "atr": curr_atr, "risk_pct": (abs(entry-sl)/entry)*100, "stoch_k": k_curr,
+        "risk_usdt": ACCOUNT_EQUITY * RISK_PER_TRADE,
+        "status": "OPEN", "exit_price": None, "exit_time": None, "result_r": None, "result": None,
+        "max_hold_ms": 16 * 15 * 60 * 1000 # 4 Jam
+    }
+
+# ==========================================
+# 6. HISTORY & MONITORING
 # ==========================================
 def load_history():
     if not os.path.exists(HISTORY_FILE): return {"open": [], "closed": []}
@@ -324,12 +407,10 @@ def monitor(t):
         time_out = (curr_time - start) >= max_hold
         
         if hit_sl and hit_tp: exit_price, r, result = sl, -1.0, "LOSS"
-        elif hit_tp: exit_price, r, result = tp, float(t.get("rr", TARGET_RR)), "WIN"
+        elif hit_tp: exit_price, r, result = tp, float(t.get("rr", 1.5)), "WIN"
         elif hit_sl: exit_price, r, result = sl, -1.0, "LOSS"
         elif time_out: 
-            # Keluar paksa di harga close candle jika sudah 3 jam
             exit_price = c[4] 
-            # Hitung R manual
             if t["direction"] == "LONG": r = (exit_price - t["entry"]) / (t["entry"] - t["sl"])
             else: r = (t["entry"] - exit_price) / (t["sl"] - t["entry"])
             result = "WIN" if r > 0 else "LOSS"
@@ -365,74 +446,14 @@ def check_open(h):
             tg(
                 f"<b>{emoji} TRADE CLOSED ({t.get('exit_reason', '')})</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"<b>{t['symbol']}</b> {t['direction']}\n\n"
+                f"<b>{t['symbol']}</b> {t['direction']} [{t.get('strategy','')}]\n\n"
                 f"<b>HASIL: {'WIN 🎯' if t['result'] == 'WIN' else 'LOSS '}</b>\n"
                 f"R: <b>{t['result_r']:+.2f}R</b>\n\n"
                 f"Entry: <code>{t['entry']}</code>\n"
                 f"Exit: <code>{t['exit_price']}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━"
             )
-        send_pro_quant_recap(h)
     return len(closed)
-
-# ==========================================
-# 6. REKAP PRO QUANT
-# ==========================================
-def get_session_wib(exit_time_iso):
-    try:
-        dt = datetime.fromisoformat(exit_time_iso)
-        dt_wib = dt + timedelta(hours=7)
-        hour = dt_wib.hour
-        if 6 <= hour < 14: return "ASIA"
-        elif 14 <= hour < 20: return "LONDON"
-        elif hour >= 20 or hour < 3: return "NEW YORK"
-        else: return "QUIET"
-    except: return "UNKNOWN"
-
-def send_pro_quant_recap(h):
-    ts = h["closed"]
-    if not ts: return
-    
-    total = len(ts)
-    wins = [x for x in ts if x.get("result") == "WIN"]
-    losses = [x for x in ts if x.get("result") == "LOSS"]
-    
-    wr = (len(wins) / total) * 100 if total > 0 else 0
-    total_r = sum(float(x.get("result_r", 0)) for x in ts)
-    
-    gp = sum(max(float(x.get("result_r", 0)), 0) for x in ts)
-    gl = abs(sum(min(float(x.get("result_r", 0)), 0) for x in ts))
-    pf = gp / gl if gl else float("inf")
-    
-    eq = peak = dd = 0.0
-    for x in ts:
-        eq += float(x.get("result_r", 0))
-        peak = max(peak, eq)
-        dd = max(dd, peak - eq)
-        
-    sessions = {"ASIA": [], "LONDON": [], "NEW YORK": [], "QUIET": []}
-    for x in ts:
-        ses = get_session_wib(x.get("exit_time", ""))
-        if ses in sessions: sessions[ses].append(x)
-            
-    session_report = ""
-    for name, trades in sessions.items():
-        if not trades: continue
-        w = len([x for x in trades if x.get("result") == "WIN"])
-        r = sum(float(x.get("result_r", 0)) for x in trades)
-        session_report += f"• {name}: {len(trades)}t ({w}W) → {r:+.2f}R\n"
-
-    recap_text = (
-        f"<b>📊 STATS SCALP 15M STRICT</b>\n"
-        f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n\n"
-        f"<b>🎯 OVERALL</b>\n"
-        f"Trades: {total} | W {len(wins)} / L {len(losses)}\n"
-        f"Win Rate: <b>{wr:.1f}%</b>\n"
-        f"Total PnL: <b>{total_r:+.2f}R</b> | PF: {pf:.2f}\n"
-        f"Max DD: {dd:.2f}R\n\n"
-        f"<b>🕐 PER SESI (WIB)</b>\n{session_report}"
-    )
-    tg(recap_text)
 
 # ==========================================
 # 7. TELEGRAM & SCAN LOOP
@@ -448,57 +469,78 @@ def tg(text):
 def signal_message(s):
     risk = abs(s["entry"] - s["sl"])
     fee_r = (2 * FEE_PER_SIDE * s["entry"] / risk) if risk > 0 else 0.0
+    
+    if s["strategy"] == "SCALP":
+        title = "🚨 SCALP 15M STRICT"
+        rr_text = "1:3.00"
+        hold_text = "Max Hold 3 Jam"
+    else:
+        title = "🏛️ ILM INTRADAY HIGH EDGE"
+        rr_text = "1:1.75"
+        hold_text = "Max Hold 4 Jam (London/NY Only)"
+        
     return (
-        f"<b>🚨 SCALP 15M STRICT SIGNAL</b>\n"
+        f"<b>{title}</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"<b>{s['symbol']}</b> · <b>{s['direction']}</b> · 15m\n\n"
         f"{s['note']}\n\n"
         f"<b>TRADE PLAN</b>\n"
         f"Entry: <code>{s['entry']}</code>\n"
-        f"SL: <code>{s['sl']}</code> (1.0 ATR)\n"
-        f"TP: <code>{s['tp']}</code> (3.0 ATR)\n"
-        f"RR: <b>1:3.00</b>\n"
+        f"SL: <code>{s['sl']}</code>\n"
+        f"TP: <code>{s['tp']}</code>\n"
+        f"RR: <b>{rr_text}</b>\n"
         f"Fee ≈ {fee_r:.2f}R\n\n"
         f"Risk: {s['risk_usdt']:.2f} USDT\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ MAX HOLD 3 JAM (12 CANDLE)"
+        f"⚠️ {hold_text}"
     )
 
 def scan(h):
     pairs = top_pairs()
     if not pairs: return
         
-    log.info("Scanning %s pairs...", len(pairs))
+    log.info("Scanning %s pairs for MULTI strategies...", len(pairs))
     created = 0
     meta = get_meta()
     
     for inst in pairs:
         if len(h["open"]) >= MAX_OPEN: break
             
-        cs = candles(inst, "15m", 300) # Butuh data panjang untuk EMA200 & SMA50
-        if not cs or len(cs) < 300: continue
+        cs_15m = candles(inst, "15m", 300)
+        cs_1h = candles(inst, "1H", 250)
+        if not cs_15m or not cs_1h or len(cs_15m) < 300: continue
             
-        sig = build_scalp_signal(inst, cs, meta)
-        
-        if isinstance(sig, dict):
-            # Cek duplikat sederhana
-            if any(x["signal_id"] == sig["signal_id"] for x in h["open"] + h["closed"]): continue
-            h["open"].append(sig)
-            save_history(h)
-            tg(signal_message(sig))
-            created += 1
-            log.info("NEW SIGNAL: %s %s", inst, sig["direction"])
+        # Run Strategy 1
+        sig1 = build_scalp_signal(inst, cs_15m, meta)
+        if isinstance(sig1, dict):
+            if not any(x["signal_id"] == sig1["signal_id"] for x in h["open"] + h["closed"]):
+                h["open"].append(sig1)
+                save_history(h)
+                tg(signal_message(sig1))
+                created += 1
+                log.info("NEW SCALP SIGNAL: %s %s", inst, sig1["direction"])
+                
+        # Run Strategy 2
+        sig2 = build_ilm_signal(inst, cs_15m, cs_1h, meta)
+        if isinstance(sig2, dict):
+            if not any(x["signal_id"] == sig2["signal_id"] for x in h["open"] + h["closed"]):
+                h["open"].append(sig2)
+                save_history(h)
+                tg(signal_message(sig2))
+                created += 1
+                log.info("NEW ILM SIGNAL: %s %s", inst, sig2["direction"])
             
     log.info("Scan complete. Created %s signals.", created)
 
 def main():
     log.info("==========================================")
-    log.info("ALPHAQUANT SCALP 15M STRICT")
-    log.info("RSI(7) Cross · EMA50/200 · ATR Ratio > 1.2")
+    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.0")
+    log.info("Strategy 1: SCALP 15M STRICT")
+    log.info("Strategy 2: ILM INTRADAY (PDF)")
     log.info("==========================================")
     
     if not TELEGRAM: log.warning("Telegram dinonaktifkan.")
-    else: tg(f"<b>🟢 SCALP 15M STRICT ONLINE</b>\nRSI(7) Cross · RR 1:3 · Max Hold 3 Jam")
+    else: tg(f"<b>🟢 MULTI-STRATEGY BOT ONLINE</b>\nScalp 15m + ILM Intraday\nTarget WR: High Edge")
         
     h = load_history()
     
