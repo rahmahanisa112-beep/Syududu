@@ -1,8 +1,8 @@
 """
-ALPHAQUANT MULTI-STRATEGY BOT V1.1 (Fixed)
+ALPHAQUANT MULTI-STRATEGY BOT V1.2 (Close Price Monitoring)
 Strategy 1: SCALP 15M STRICT (RSI 7, ATR Ratio, RR 1:3)
 Strategy 2: ILM INTRADAY (EMA 200/50, Stoch RSI, Time Filter London/NY, RR 1:1.75)
-+ Auto Stats Report setiap trade closed
+Monitoring: Hanya cek harga CLOSE candle (bukan wick) untuk menghindari false SL hit
 """
 
 import os
@@ -40,7 +40,7 @@ MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "3000000"))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
 log = logging.getLogger("MULTI_BOT")
 S = requests.Session()
-S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.1"})
+S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.2"})
 _LAST_REQ = [0.0]
 
 # ==========================================
@@ -347,7 +347,7 @@ def build_ilm_signal(inst, cs_15m, cs_1h, meta):
     }
 
 # ==========================================
-# 6. HISTORY & MONITORING
+# 6. HISTORY & MONITORING (CLOSE PRICE ONLY)
 # ==========================================
 def load_history():
     if not os.path.exists(HISTORY_FILE): return {"open": [], "closed": []}
@@ -368,6 +368,11 @@ def save_history(h):
     os.replace(tmp, HISTORY_FILE)
 
 def monitor(t):
+    """
+    MONITORING CLOSE PRICE ONLY
+    Hanya mengecek harga CLOSE candle, bukan wick (high/low).
+    Ini mencegah false SL hit akibat jarum (wick) yang hanya menyentuh SL sekilas.
+    """
     mon_tf = "5m"
     start = t["signal_candle_time"]
     age_ms = max(0, int(time.time() * 1000) - start)
@@ -380,35 +385,52 @@ def monitor(t):
     max_hold = t.get("max_hold_ms", 3 * 60 * 60 * 1000)
     
     for c in [x for x in cs if x[0] >= start]:
-        hi, lo = c[2], c[3]
+        # PENTING: Hanya gunakan CLOSE price (index 4), bukan high/low
+        close_price = c[4]
         sl, tp = t["sl"], t["tp"]
         curr_time = c[0]
         
-        hit_sl = (lo <= sl) if t["direction"] == "LONG" else (hi >= sl)
-        hit_tp = (hi >= tp) if t["direction"] == "LONG" else (lo <= tp)
+        # Cek berdasarkan CLOSE price saja
+        if t["direction"] == "LONG":
+            hit_sl = close_price <= sl
+            hit_tp = close_price >= tp
+        else:  # SHORT
+            hit_sl = close_price >= sl
+            hit_tp = close_price <= tp
+            
         time_out = (curr_time - start) >= max_hold
         
-        if hit_sl and hit_tp: exit_price, r, result = sl, -1.0, "LOSS"
-        elif hit_tp: exit_price, r, result = tp, float(t.get("rr", 1.5)), "WIN"
-        elif hit_sl: exit_price, r, result = sl, -1.0, "LOSS"
+        if hit_sl and hit_tp: 
+            exit_price, r, result = sl, -1.0, "LOSS"
+        elif hit_tp: 
+            exit_price, r, result = tp, float(t.get("rr", 1.5)), "WIN"
+        elif hit_sl: 
+            exit_price, r, result = sl, -1.0, "LOSS"
         elif time_out: 
-            exit_price = c[4] 
-            if t["direction"] == "LONG": r = (exit_price - t["entry"]) / (t["entry"] - t["sl"])
-            else: r = (t["entry"] - exit_price) / (t["sl"] - t["entry"])
+            exit_price = close_price
+            if t["direction"] == "LONG": 
+                r = (exit_price - t["entry"]) / (t["entry"] - t["sl"])
+            else: 
+                r = (t["entry"] - exit_price) / (t["sl"] - t["entry"])
             result = "WIN" if r > 0 else "LOSS"
             if abs(r) < 0.1: result = "BREAKEVEN"
-        else: continue
+        else: 
+            continue
             
         t_out = dict(t)
         t_out.update({
-            "status": "CLOSED", "exit_price": exit_price, "exit_time": iso(c[0]),
-            "result_r": r, "result": result, "exit_reason": "TIMEOUT" if time_out else ("SL" if hit_sl else "TP")
+            "status": "CLOSED", 
+            "exit_price": exit_price, 
+            "exit_time": iso(c[0]),
+            "result_r": r, 
+            "result": result, 
+            "exit_reason": "TIMEOUT" if time_out else ("SL" if hit_sl else "TP")
         })
         return t_out
     return None
 
 # ==========================================
-# 7. STATS REPORT (FIXED)
+# 7. STATS REPORT
 # ==========================================
 def send_stats_report(h):
     """Kirim laporan stats setiap kali ada trade closed"""
@@ -483,7 +505,7 @@ def send_stats_report(h):
             f"Streak: {streak}{st_type}\n\n"
             f"<b>📈 PER STRATEGY</b>\n"
             f"{strategy_report}\n"
-            f"<b>🕒 5 TRADE TERAKHIR</b>\n"
+            f"<b> 5 TRADE TERAKHIR</b>\n"
             f"{last_5_str}"
         )
         
@@ -559,7 +581,7 @@ def check_open(h):
                 f"<b>{emoji} TRADE CLOSED ({t.get('exit_reason', '')})</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"<b>{t['symbol']}</b> {t['direction']} [{t.get('strategy','')}]\n\n"
-                f"<b>HASIL: {'WIN ' if t['result'] == 'WIN' else 'LOSS '}</b>\n"
+                f"<b>HASIL: {'WIN 🎯' if t['result'] == 'WIN' else 'LOSS 🛑'}</b>\n"
                 f"R: <b>{t['result_r']:+.2f}R</b>\n\n"
                 f"Entry: <code>{t['entry']}</code>\n"
                 f"Exit: <code>{t['exit_price']}</code>\n"
@@ -611,9 +633,10 @@ def scan(h):
 
 def main():
     log.info("==========================================")
-    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.1")
+    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.2")
     log.info("Strategy 1: SCALP 15M STRICT")
     log.info("Strategy 2: ILM INTRADAY (PDF)")
+    log.info("Monitoring: Close Price Only (Anti-Wick)")
     log.info("==========================================")
     
     if not TELEGRAM: log.warning("Telegram dinonaktifkan.")
