@@ -1,8 +1,9 @@
 """
-ALPHAQUANT MULTI-STRATEGY BOT V1.2 (Close Price Monitoring)
+ALPHAQUANT MULTI-STRATEGY BOT V1.3 (Top 15 Liquid Pairs Edition)
 Strategy 1: SCALP 15M STRICT (RSI 7, ATR Ratio, RR 1:3)
 Strategy 2: ILM INTRADAY (EMA 200/50, Stoch RSI, Time Filter London/NY, RR 1:1.75)
-Monitoring: Hanya cek harga CLOSE candle (bukan wick) untuk menghindari false SL hit
+Monitoring: Close Price Only (Anti-Wick)
+Target: High Liquidity Pairs Only (Spread Ketat)
 """
 
 import os
@@ -14,7 +15,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 # ==========================================
-# 1. KONFIGURASI DASAR
+# 1. KONFIGURASI DASAR (Dioptimalkan untuk Akun $50)
 # ==========================================
 OKX = "https://www.okx.com"
 HISTORY_FILE = "history_multi.json" 
@@ -30,17 +31,19 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM = bool(TOKEN and CHAT_ID)
 
 # Money Management
-MAX_OPEN = int(os.getenv("MAX_OPEN", "5"))
-RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01"))
-ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "1000.0"))
+MAX_OPEN = int(os.getenv("MAX_OPEN", "2")) # Aman untuk akun $50 (Maksimal 2 posisi)
+RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) # 1% dari $50 = $0.50 risk
+ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "50.0")) # Modal $50
 FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
-TOP_PAIRS = int(os.getenv("TOP_PAIRS", "50"))
-MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "3000000"))
+
+# Filter Pair (SANGAT KETAT: Hanya Top 15 Pair Paling Likuid)
+TOP_PAIRS = int(os.getenv("TOP_PAIRS", "15")) 
+MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "5000000")) # Minimal Volume $5 Juta/hari
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
 log = logging.getLogger("MULTI_BOT")
 S = requests.Session()
-S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.2"})
+S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.3"})
 _LAST_REQ = [0.0]
 
 # ==========================================
@@ -371,7 +374,7 @@ def monitor(t):
     """
     MONITORING CLOSE PRICE ONLY
     Hanya mengecek harga CLOSE candle, bukan wick (high/low).
-    Ini mencegah false SL hit akibat jarum (wick) yang hanya menyentuh SL sekilas.
+    Mencegah false SL hit akibat jarum (wick).
     """
     mon_tf = "5m"
     start = t["signal_candle_time"]
@@ -385,16 +388,14 @@ def monitor(t):
     max_hold = t.get("max_hold_ms", 3 * 60 * 60 * 1000)
     
     for c in [x for x in cs if x[0] >= start]:
-        # PENTING: Hanya gunakan CLOSE price (index 4), bukan high/low
-        close_price = c[4]
+        close_price = c[4] # HANYA CLOSE PRICE
         sl, tp = t["sl"], t["tp"]
         curr_time = c[0]
         
-        # Cek berdasarkan CLOSE price saja
         if t["direction"] == "LONG":
             hit_sl = close_price <= sl
             hit_tp = close_price >= tp
-        else:  # SHORT
+        else:
             hit_sl = close_price >= sl
             hit_tp = close_price <= tp
             
@@ -433,7 +434,6 @@ def monitor(t):
 # 7. STATS REPORT
 # ==========================================
 def send_stats_report(h):
-    """Kirim laporan stats setiap kali ada trade closed"""
     ts = h.get("closed", [])
     if not ts:
         log.info("No closed trades yet, skipping stats report.")
@@ -457,7 +457,6 @@ def send_stats_report(h):
             peak = max(peak, eq)
             dd = max(dd, peak - eq)
             
-        # Streak
         streak, st_type = 0, ""
         for x in reversed(ts):
             res = x.get("result")
@@ -469,7 +468,6 @@ def send_stats_report(h):
                 st_type = "L"; streak += 1
             else: break
         
-        # Per Strategy
         scalp_trades = [x for x in ts if x.get("strategy") == "SCALP"]
         ilm_trades = [x for x in ts if x.get("strategy") == "ILM"]
         
@@ -483,7 +481,6 @@ def send_stats_report(h):
         
         strategy_report = strategy_stats(scalp_trades, "SCALP 15M") + strategy_stats(ilm_trades, "ILM INTRADAY")
         
-        # 5 Trade Terakhir
         last_5 = ts[-5:]
         last_5_str = ""
         for x in reversed(last_5):
@@ -493,7 +490,7 @@ def send_stats_report(h):
         pf_text = "" if math.isinf(pf) else f"{pf:.2f}"
         
         recap_text = (
-            f"<b>📊 MULTI-STRATEGY STATS</b>\n"
+            f"<b> MULTI-STRATEGY STATS (Top 15 Liquid)</b>\n"
             f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n\n"
             f"<b>🎯 OVERALL</b>\n"
             f"Total Trade: {total}\n"
@@ -505,7 +502,7 @@ def send_stats_report(h):
             f"Streak: {streak}{st_type}\n\n"
             f"<b>📈 PER STRATEGY</b>\n"
             f"{strategy_report}\n"
-            f"<b> 5 TRADE TERAKHIR</b>\n"
+            f"<b>🕒 5 TRADE TERAKHIR</b>\n"
             f"{last_5_str}"
         )
         
@@ -533,7 +530,7 @@ def signal_message(s):
     fee_r = (2 * FEE_PER_SIDE * s["entry"] / risk) if risk > 0 else 0.0
     
     if s["strategy"] == "SCALP":
-        title = "🚨 SCALP 15M STRICT"
+        title = " SCALP 15M STRICT"
         rr_text = "1:3.00"
         hold_text = "Max Hold 3 Jam"
     else:
@@ -574,7 +571,6 @@ def check_open(h):
         h["closed"].extend(closed)
         save_history(h)
         
-        # Kirim notifikasi per trade
         for t in closed:
             emoji = "✅" if t["result"] == "WIN" else "❌"
             tg(
@@ -588,7 +584,6 @@ def check_open(h):
                 f"━━━━━━━━━━━━━━━━━━"
             )
         
-        # KIRIM STATS REPORT SETELAH ADA TRADE CLOSED
         log.info(f"Sending stats report after {len(closed)} trade(s) closed...")
         send_stats_report(h)
         
@@ -609,7 +604,6 @@ def scan(h):
         cs_1h = candles(inst, "1H", 250)
         if not cs_15m or not cs_1h or len(cs_15m) < 300: continue
             
-        # Run Strategy 1
         sig1 = build_scalp_signal(inst, cs_15m, meta)
         if isinstance(sig1, dict):
             if not any(x["signal_id"] == sig1["signal_id"] for x in h["open"] + h["closed"]):
@@ -619,7 +613,6 @@ def scan(h):
                 created += 1
                 log.info("NEW SCALP SIGNAL: %s %s", inst, sig1["direction"])
                 
-        # Run Strategy 2
         sig2 = build_ilm_signal(inst, cs_15m, cs_1h, meta)
         if isinstance(sig2, dict):
             if not any(x["signal_id"] == sig2["signal_id"] for x in h["open"] + h["closed"]):
@@ -633,9 +626,8 @@ def scan(h):
 
 def main():
     log.info("==========================================")
-    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.2")
-    log.info("Strategy 1: SCALP 15M STRICT")
-    log.info("Strategy 2: ILM INTRADAY (PDF)")
+    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.3")
+    log.info("Top 15 Liquid Pairs Only (Anti-Micin)")
     log.info("Monitoring: Close Price Only (Anti-Wick)")
     log.info("==========================================")
     
