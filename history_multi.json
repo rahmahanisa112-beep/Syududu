@@ -1,32 +1,5 @@
 {
-  "open": [
-    {
-      "signal_id": "WLD-USDT-SWAP|LONG|1792566000000|ILM",
-      "symbol": "WLD-USDT-SWAP",
-      "direction": "LONG",
-      "timeframe": "15m",
-      "setup": "ILM_INTRADAY",
-      "strategy": "ILM",
-      "note": "1H BULL · Stoch RSI Cross\nPrice @ EMA50 15m",
-      "signal_candle_time": 1792566000000,
-      "signal_candle_iso": "2026-10-21T07:00:00+00:00",
-      "created_at": "2026-10-21T07:20:24.776552+00:00",
-      "entry": 0.5822,
-      "sl": 0.5769,
-      "tp": 0.5915,
-      "rr": 1.75,
-      "atr": 0.004449075076994275,
-      "risk_pct": 0.9103400893164002,
-      "stoch_k": 7.577580329316535,
-      "risk_usdt": 10.0,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "max_hold_ms": 14400000
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "signal_id": "GALA-USDT-SWAP|SHORT|1792427400000|ICP",
@@ -398,6 +371,33 @@
       "result": "LOSS",
       "max_hold_ms": 10800000,
       "exit_reason": "SL"
+    },
+    {
+      "signal_id": "WLD-USDT-SWAP|LONG|1792566000000|ILM",
+      "symbol": "WLD-USDT-SWAP",
+      "direction": "LONG",
+      "timeframe": "15m",
+      "setup": "ILM_INTRADAY",
+      "strategy": "ILM",
+      "note": "1H BULL · Stoch RSI Cross\nPrice @ EMA50 15m",
+      "signal_candle_time": 1792566000000,
+      "signal_candle_iso": "2026-10-21T07:00:00+00:00",
+      "created_at": "2026-10-21T07:20:24.776552+00:00",
+      "entry": 0.5822,
+      "sl": 0.5769,
+      "tp": 0.5915,
+      "rr": 1.75,
+      "atr": 0.004449075076994275,
+      "risk_pct": 0.9103400893164002,
+      "stoch_k": 7.577580329316535,
+      "risk_usdt": 10.0,
+      "status": "CLOSED",
+      "exit_price": 0.585,
+      "exit_time": "2026-10-21T11:00:00+00:00",
+      "result_r": 0.5283018867924283,
+      "result": "WIN",
+      "max_hold_ms": 14400000,
+      "exit_reason": "TIMEOUT"
     }
   ]
 }
