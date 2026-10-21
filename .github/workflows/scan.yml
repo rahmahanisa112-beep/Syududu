@@ -1,16 +1,18 @@
-name: AlphaQuant Multi-Strategy Scanner
+name: AlphaQuant Multi-Strategy Scanner (Top 15)
 
 on:
   schedule:
+    # Jalankan otomatis setiap 15 menit
     - cron: '*/15 * * * *'
+  # Memungkinkan Anda menjalankan bot secara manual dari tab "Actions"
   workflow_dispatch:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 10 # Batas waktu 10 menit per scan (safety)
     permissions:
-      contents: write
+      contents: write # PENTING: Izin untuk menyimpan file history ke repo
 
     steps:
     - name: Checkout Repository
@@ -22,34 +24,46 @@ jobs:
         python-version: '3.10'
 
     - name: Install Dependencies
-      run: pip install requests
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
 
     - name: Run AlphaQuant Bot
       env:
+        # --- KONFIGURASI TELEGRAM (WAJIB DIISI VIA SECRETS) ---
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        RUN_FOREVER: "0"
-        SCAN_INTERVAL: "10"
-        RISK_PER_TRADE: "0.01"
-        ACCOUNT_EQUITY: "1000"
-        MAX_OPEN: "5"
-        FEE_PER_SIDE: "0.0005"
-        TOP_PAIRS: "50"
-        MIN_VOLUME_USDT: "3000000"
+        
+        # --- KONFIGURASI BOT (Mode Sekali Jalan) ---
+        RUN_FOREVER: "0"          # PENTING: 0 agar bot scan 1x lalu mati (dikontrol cron)
+        SCAN_INTERVAL: "10"       
+        FEE_PER_SIDE: "0.0005"    # Fee taker OKX (0.05%)
+        
+        # --- KONFIGURASI AKUN $50 ---
+        ACCOUNT_EQUITY: "50"       # Modal Anda $50
+        RISK_PER_TRADE: "0.01"     # Risiko 1% = $0.50 per trade
+        MAX_OPEN: "2"              # Maksimal 2 posisi bersamaan (Aman untuk $50)
+        
+        # --- KONFIGURASI PAIR (SANGAT KETAT: Anti-Micin) ---
+        TOP_PAIRS: "15"            # Hanya 15 pair teratas (BTC, ETH, SOL, BNB, XRP, dll)
+        MIN_VOLUME_USDT: "5000000" # Minimal volume $5 Juta/hari
+        
       run: |
-        echo "Memulai siklus scan Multi-Strategy..."
+        echo "Memulai siklus scan Multi-Strategy (Top 15 Liquid)..."
         python signal_bot.py
 
-    - name: Save History to Repository
+    - name: Save History to Repository (Auto-Commit)
       run: |
+        # Konfigurasi Git
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
+        # Cek apakah file history ada sebelum di-commit
         if [ -f "history_multi.json" ]; then
           echo "Menyimpan history_multi.json..."
           git add history_multi.json
-          git commit -m " Auto-update: history_multi.json" || echo "Tidak ada perubahan."
+          git commit -m "🤖 Auto-update: history_multi.json" || echo "Tidak ada perubahan untuk di-commit."
           git push
         else
-          echo "File history belum ada."
+          echo "⚠️ File history_multi.json belum ada (belum ada sinyal). Skip commit."
         fi
