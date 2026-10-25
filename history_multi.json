@@ -1,5 +1,32 @@
 {
-  "open": [],
+  "open": [
+    {
+      "signal_id": "SATS-USDT-SWAP|SHORT|1792935900000|ILM",
+      "symbol": "SATS-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "15m",
+      "setup": "ILM_INTRADAY",
+      "strategy": "ILM",
+      "note": "1H BEAR · Stoch RSI Cross\nPrice @ EMA50 15m",
+      "signal_candle_time": 1792935900000,
+      "signal_candle_iso": "2026-10-25T13:45:00+00:00",
+      "created_at": "2026-10-25T14:04:51.403045+00:00",
+      "entry": 9.999e-09,
+      "sl": 1.0045e-08,
+      "tp": 9.918e-09,
+      "rr": 1.75,
+      "atr": 3.874593456535207e-11,
+      "risk_pct": 0.4600460046004522,
+      "stoch_k": 93.65998181323204,
+      "risk_usdt": 0.5,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null,
+      "max_hold_ms": 14400000
+    }
+  ],
   "closed": [
     {
       "signal_id": "GALA-USDT-SWAP|SHORT|1792427400000|ICP",
