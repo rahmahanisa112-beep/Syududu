@@ -1,9 +1,9 @@
 """
-ALPHAQUANT MULTI-STRATEGY BOT V1.3 (Top 15 Liquid Pairs Edition)
+ALPHAQUANT MULTI-STRATEGY BOT V1.4 (Hardcoded Top 15 Whitelist)
 Strategy 1: SCALP 15M STRICT (RSI 7, ATR Ratio, RR 1:3)
 Strategy 2: ILM INTRADAY (EMA 200/50, Stoch RSI, Time Filter London/NY, RR 1:1.75)
 Monitoring: Close Price Only (Anti-Wick)
-Target: High Liquidity Pairs Only (Spread Ketat)
+Target: Hardcoded Top 15 Liquid Pairs (No Micin/Mid-cap allowed)
 """
 
 import os
@@ -15,7 +15,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 # ==========================================
-# 1. KONFIGURASI DASAR (Dioptimalkan untuk Akun $50)
+# 1. KONFIGURASI DASAR
 # ==========================================
 OKX = "https://www.okx.com"
 HISTORY_FILE = "history_multi.json" 
@@ -31,19 +31,15 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM = bool(TOKEN and CHAT_ID)
 
 # Money Management
-MAX_OPEN = int(os.getenv("MAX_OPEN", "2")) # Aman untuk akun $50 (Maksimal 2 posisi)
-RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) # 1% dari $50 = $0.50 risk
-ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "50.0")) # Modal $50
+MAX_OPEN = int(os.getenv("MAX_OPEN", "2")) 
+RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) 
+ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "50.0")) 
 FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
-
-# Filter Pair (SANGAT KETAT: Hanya Top 15 Pair Paling Likuid)
-TOP_PAIRS = int(os.getenv("TOP_PAIRS", "15")) 
-MIN_VOLUME_USDT = float(os.getenv("MIN_VOLUME_USDT", "5000000")) # Minimal Volume $5 Juta/hari
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
 log = logging.getLogger("MULTI_BOT")
 S = requests.Session()
-S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.3"})
+S.headers.update({"User-Agent": "ALPHAQUANT-MULTI-V1.4"})
 _LAST_REQ = [0.0]
 
 # ==========================================
@@ -68,17 +64,18 @@ def iso(ms): return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat
 def now(): return datetime.now(timezone.utc).isoformat()
 
 def top_pairs():
-    d = api("/api/v5/market/tickers", {"instType": "SWAP"})
-    if not d: return []
-    a = []
-    for x in d.get("data", []):
-        inst = x.get("instId", "")
-        if not inst.endswith("-USDT-SWAP"): continue
-        try: v = float(x.get("volCcy24h", 0))
-        except: continue
-        if v >= MIN_VOLUME_USDT: a.append((inst, v))
-    a.sort(key=lambda x: x[1], reverse=True)
-    return [x[0] for x in a[:TOP_PAIRS]]
+    """
+    HARDcoded WHITELIST: Top 15 Most Liquid Pairs Only.
+    Mencegah koin mid-cap/micin (seperti IOST, SATS, AKE) masuk.
+    """
+    WHITELIST = [
+        "BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BNB-USDT-SWAP",
+        "XRP-USDT-SWAP", "DOGE-USDT-SWAP", "ADA-USDT-SWAP", "TRX-USDT-SWAP",
+        "AVAX-USDT-SWAP", "LINK-USDT-SWAP", "DOT-USDT-SWAP", "SUI-USDT-SWAP",
+        "SHIB-USDT-SWAP", "BCH-USDT-SWAP", "LTC-USDT-SWAP"
+    ]
+    log.info(f"Using Hardcoded Top 15 Whitelist Mode.")
+    return WHITELIST
 
 def get_meta():
     d = api("/api/v5/public/instruments", {"instType": "SWAP"})
@@ -371,11 +368,6 @@ def save_history(h):
     os.replace(tmp, HISTORY_FILE)
 
 def monitor(t):
-    """
-    MONITORING CLOSE PRICE ONLY
-    Hanya mengecek harga CLOSE candle, bukan wick (high/low).
-    Mencegah false SL hit akibat jarum (wick).
-    """
     mon_tf = "5m"
     start = t["signal_candle_time"]
     age_ms = max(0, int(time.time() * 1000) - start)
@@ -490,7 +482,7 @@ def send_stats_report(h):
         pf_text = "" if math.isinf(pf) else f"{pf:.2f}"
         
         recap_text = (
-            f"<b> MULTI-STRATEGY STATS (Top 15 Liquid)</b>\n"
+            f"<b> MULTI-STRATEGY STATS (Top 15 Whitelist)</b>\n"
             f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n\n"
             f"<b>🎯 OVERALL</b>\n"
             f"Total Trade: {total}\n"
@@ -551,7 +543,7 @@ def signal_message(s):
         f"Fee ≈ {fee_r:.2f}R\n\n"
         f"Risk: {s['risk_usdt']:.2f} USDT\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ {hold_text}"
+        f"️ {hold_text}"
     )
 
 def check_open(h):
@@ -577,7 +569,7 @@ def check_open(h):
                 f"<b>{emoji} TRADE CLOSED ({t.get('exit_reason', '')})</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
                 f"<b>{t['symbol']}</b> {t['direction']} [{t.get('strategy','')}]\n\n"
-                f"<b>HASIL: {'WIN 🎯' if t['result'] == 'WIN' else 'LOSS 🛑'}</b>\n"
+                f"<b>HASIL: {'WIN ' if t['result'] == 'WIN' else 'LOSS 🛑'}</b>\n"
                 f"R: <b>{t['result_r']:+.2f}R</b>\n\n"
                 f"Entry: <code>{t['entry']}</code>\n"
                 f"Exit: <code>{t['exit_price']}</code>\n"
@@ -626,8 +618,8 @@ def scan(h):
 
 def main():
     log.info("==========================================")
-    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.3")
-    log.info("Top 15 Liquid Pairs Only (Anti-Micin)")
+    log.info("ALPHAQUANT MULTI-STRATEGY BOT V1.4")
+    log.info("Hardcoded Top 15 Whitelist (No Micin)")
     log.info("Monitoring: Close Price Only (Anti-Wick)")
     log.info("==========================================")
     
