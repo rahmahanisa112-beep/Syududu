@@ -1,32 +1,5 @@
 {
-  "open": [
-    {
-      "signal_id": "BCH-USDT-SWAP|LONG|1792979100000|SCALP",
-      "symbol": "BCH-USDT-SWAP",
-      "direction": "LONG",
-      "timeframe": "15m",
-      "setup": "SCALP_15M",
-      "strategy": "SCALP",
-      "note": "RSI(7) Cross · ATR Ratio 1.46\nTrend: BULL",
-      "signal_candle_time": 1792979100000,
-      "signal_candle_iso": "2026-10-26T01:45:00+00:00",
-      "created_at": "2026-10-26T02:08:18.430112+00:00",
-      "entry": 278.3,
-      "sl": 276.3,
-      "tp": 284.2,
-      "rr": 3.0,
-      "atr": 1.9508438204020648,
-      "risk_pct": 0.7186489399928134,
-      "rsi": 46.82754124662419,
-      "risk_usdt": 0.5,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "max_hold_ms": 10800000
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "signal_id": "GALA-USDT-SWAP|SHORT|1792427400000|ICP",
@@ -532,6 +505,33 @@
       "result_r": -1.0,
       "result": "LOSS",
       "max_hold_ms": 14400000,
+      "exit_reason": "SL"
+    },
+    {
+      "signal_id": "BCH-USDT-SWAP|LONG|1792979100000|SCALP",
+      "symbol": "BCH-USDT-SWAP",
+      "direction": "LONG",
+      "timeframe": "15m",
+      "setup": "SCALP_15M",
+      "strategy": "SCALP",
+      "note": "RSI(7) Cross · ATR Ratio 1.46\nTrend: BULL",
+      "signal_candle_time": 1792979100000,
+      "signal_candle_iso": "2026-10-26T01:45:00+00:00",
+      "created_at": "2026-10-26T02:08:18.430112+00:00",
+      "entry": 278.3,
+      "sl": 276.3,
+      "tp": 284.2,
+      "rr": 3.0,
+      "atr": 1.9508438204020648,
+      "risk_pct": 0.7186489399928134,
+      "rsi": 46.82754124662419,
+      "risk_usdt": 0.5,
+      "status": "CLOSED",
+      "exit_price": 276.3,
+      "exit_time": "2026-10-26T02:50:00+00:00",
+      "result_r": -1.0,
+      "result": "LOSS",
+      "max_hold_ms": 10800000,
       "exit_reason": "SL"
     }
   ]
