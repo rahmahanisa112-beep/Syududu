@@ -1,5 +1,6 @@
 {
-  "open": [
+  "open": [],
+  "closed": [
     {
       "signal_id": "AVAX-USDT-SWAP|SHORT|1793019600000|QWEN_ALPHA",
       "symbol": "AVAX-USDT-SWAP",
@@ -19,13 +20,13 @@
       "risk_pct": 2.4208985474608697,
       "rsi": 43.85542168674698,
       "risk_usdt": 0.5,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "max_hold_ms": 86400000
+      "status": "CLOSED",
+      "exit_price": 8.781,
+      "exit_time": "2026-10-27T13:00:00+00:00",
+      "result_r": 0.4651162790697661,
+      "result": "WIN",
+      "max_hold_ms": 86400000,
+      "exit_reason": "TIMEOUT"
     }
-  ],
-  "closed": []
+  ]
 }
