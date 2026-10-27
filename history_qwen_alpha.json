@@ -1,5 +1,32 @@
 {
-  "open": [],
+  "open": [
+    {
+      "signal_id": "BTC-USDT-SWAP|SHORT|1793106000000|QWEN_ALPHA",
+      "symbol": "BTC-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "1H",
+      "setup": "QWEN_ALPHA_CORE",
+      "strategy": "QWEN_ALPHA",
+      "note": "4H BEAR Trend\n1H RSI Pullback (48.6)\nVol Spike (1.9x)",
+      "signal_candle_time": 1793106000000,
+      "signal_candle_iso": "2026-10-27T13:00:00+00:00",
+      "created_at": "2026-10-27T14:44:41.561985+00:00",
+      "entry": 80014.1,
+      "sl": 80258.6,
+      "tp": 79525.1,
+      "rr": 2.0,
+      "atr": 162.98571428571762,
+      "risk_pct": 0.30557114308603106,
+      "rsi": 48.575186321788685,
+      "risk_usdt": 0.5,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null,
+      "max_hold_ms": 86400000
+    }
+  ],
   "closed": [
     {
       "signal_id": "AVAX-USDT-SWAP|SHORT|1793019600000|QWEN_ALPHA",
