@@ -1,0 +1,40 @@
+name: scan
+
+on:
+  schedule:
+    # 1 menit setelah candle 15m close, hanya jam sesi (07:00-17:00 UTC = 14:00-24:00 WIB)
+    - cron: "1,16,31,46 7-16 * * *"
+    - cron: "1 17 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "scan | status | test"
+        type: choice
+        default: status
+        options: [scan, status, test]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run bot
+        run: python signal_bot.py ${{ github.event.inputs.mode || 'scan' }}
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EQUITY: ${{ vars.EQUITY || '1000' }}
