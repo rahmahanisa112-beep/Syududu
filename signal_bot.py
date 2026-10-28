@@ -1,482 +1,339 @@
+#!/usr/bin/env python3
 """
-QWEN-ALPHA-CORE V1.0 (Pure Alpha Arena Winning Strategy)
-Prinsip Utama:
-1. Capital Preservation: Circuit breaker 2x loss = stop 24 jam.
-2. Trend Following: Hanya entry searah tren 4H & 1H.
-3. Pullback Entry: Beli saat RSI pullback ke zona 40-60, bukan saat overbought.
-4. Volatility Sizing: SL/TP berdasarkan ATR, risiko fix 1% per trade.
-5. Time Exit: Keluar paksa setelah 24 jam jika tidak kena TP/SL.
-"""
+Regime-First Scalper - signal scanner
+Data: OKX public API | Output: Telegram | Runner: GitHub Actions
 
+Alur: ambil data 15m/1H/4H -> deteksi REGIME (1H) -> baru cari SINYAL (15m).
+Usage: python signal_bot.py [scan|status|test]
+"""
 import os
-import json
+import sys
 import time
-import math
-import logging
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+import pandas as pd
 import requests
-from datetime import datetime, timezone, timedelta
 
-# ==========================================
-# 1. KONFIGURASI DASAR
-# ==========================================
-OKX = "https://www.okx.com"
-HISTORY_FILE = "history_qwen_alpha.json" 
-SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", "60"))
-RUN_FOREVER = os.getenv("RUN_FOREVER", "1") == "1"
-RETRIES = 3
-MIN_REQUEST_GAP = 0.2
-TIMEOUT = 10
+# ----------------------------------------------------------------- config
+INST_ID = os.getenv("INST_ID", "BTC-USDT-SWAP")
+OKX_BASES = ["https://www.okx.com", "https://aws.okx.com"]
+ENTRY_TF, REG_TF, DIR_TF = "15m", "1H", "4H"
 
-# Telegram
-TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-TELEGRAM = bool(TOKEN and CHAT_ID)
+TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN") or ""
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or ""
 
-# Money Management (Alpha Arena Protocol)
-MAX_OPEN = int(os.getenv("MAX_OPEN", "1")) # Maksimal 1 posisi untuk fokus penuh
-RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01")) # 1% risiko per trade
-ACCOUNT_EQUITY = float(os.getenv("ACCOUNT_EQUITY", "50.0")) 
-FEE_PER_SIDE = float(os.getenv("FEE_PER_SIDE", "0.0005"))
+def _f(name, default):
+    try:
+        return float(os.getenv(name, default))
+    except ValueError:
+        return float(default)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s| %(levelname)s| %(message)s")
-log = logging.getLogger("QWEN_ALPHA")
-S = requests.Session()
-S.headers.update({"User-Agent": "QWEN-ALPHA-CORE"})
-_LAST_REQ = [0.0]
+CFG = dict(
+    confirm_bars=int(_f("CONFIRM_BARS", 1)),   # konfirmasi regime (candle 1H)
+    adx_trend=25, adx_range=20, chaos_pct=90,
+    sl_mult=_f("SL_MULT", 1.2),                # SL = x ATR(14) 15m
+    rr=_f("RR", 2.0),
+    risk_pct=_f("RISK_PCT", 0.5),              # risiko per trade (% equity)
+    equity=_f("EQUITY", 1000),                 # hanya untuk contoh size
+    max_lev=_f("MAX_LEV", 5),
+    fee_rt=_f("FEE_RT", 0.08),                 # fee round trip (%)
+    fee_mult=_f("FEE_MULT", 3.0),              # skip jika SL < x total fee
+    time_stop=int(_f("TIME_STOP", 16)),        # candle 15m
+    stale_frac=_f("STALE_FRAC", 0.5),          # skip jika harga geser > x SL dari entry
+    fresh_min=int(_f("FRESH_MIN", 14)),        # sinyal max umur (menit) sejak candle close
+)
+SESSION_UTC = os.getenv("SESSION_UTC", "7-17")  # 14:00-23:59 WIB, jam UTC [start, end)
 
-# ==========================================
-# 2. FUNGSI API & DATA
-# ==========================================
-def api(path, params=None):
-    for attempt in range(RETRIES):
-        wait = MIN_REQUEST_GAP - (time.time() - _LAST_REQ[0])
-        if wait > 0: time.sleep(wait)
-        _LAST_REQ[0] = time.time()
-        try:
-            r = S.get(OKX + path, params=params, timeout=TIMEOUT)
-            r.raise_for_status()
-            d = r.json()
-            if d.get("code") == "0": return d
-            log.warning("OKX error: %s", d)
-        except Exception as e:
-            log.warning("Request failed %s/%s: %s", attempt + 1, RETRIES, e)
-    return None
+REGIME_NAME = {
+    1: "TREND UP", -1: "TREND DOWN", 2: "RANGE",
+    3: "BREAKOUT UP", -3: "BREAKOUT DOWN", 9: "CHAOS (no trade)", 0: "NETRAL",
+}
+MODULE_NAME = {"A": "Pullback", "B": "Mean Reversion", "C": "Breakout"}
 
-def iso(ms): return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
-def now(): return datetime.now(timezone.utc).isoformat()
 
-def top_pairs():
-    """Hardcoded Top 15 Whitelist (Alpha Arena Universe)"""
-    WHITELIST = [
-        "BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BNB-USDT-SWAP",
-        "XRP-USDT-SWAP", "DOGE-USDT-SWAP", "ADA-USDT-SWAP", "TRX-USDT-SWAP",
-        "AVAX-USDT-SWAP", "LINK-USDT-SWAP", "DOT-USDT-SWAP", "SUI-USDT-SWAP",
-        "SHIB-USDT-SWAP", "BCH-USDT-SWAP", "LTC-USDT-SWAP"
-    ]
-    return WHITELIST
-
-def get_meta():
-    d = api("/api/v5/public/instruments", {"instType": "SWAP"})
-    out = {}
-    if not d: return out
-    for x in d.get("data", []):
-        inst = x.get("instId", "")
-        if inst.endswith("-USDT-SWAP"):
-            try: out[inst] = {"tick": float(x.get("tickSz", "0.00000001"))}
-            except: pass
-    return out
-
-def candles(inst, bar, needed):
-    found = {}
-    cursor = None
-    max_requests = math.ceil(needed / 100) + 6
-    for _ in range(max_requests):
-        p = {"instId": inst, "bar": bar, "limit": "100"}
-        if cursor is not None: p["after"] = str(cursor)
-        d = api("/api/v5/market/candles", p)
-        if not d: break
-        rows = d.get("data", [])
-        if not rows: break
-        oldest = None
-        for x in rows:
+# ----------------------------------------------------------------- data
+def fetch_candles(bar, limit=300):
+    """Return DataFrame ascending: ts, open, high, low, close, vol, confirm."""
+    last_err = None
+    for base in OKX_BASES:
+        for attempt in range(3):
             try:
-                ts = int(x[0])
-                oldest = ts if oldest is None else min(oldest, ts)
-                if int(x[8]) != 1: continue
-                found[ts] = [ts, float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])]
-            except: continue
-        if len(found) >= needed: break
-        if not oldest or oldest == cursor: break
-        cursor = oldest
-        time.sleep(0.15)
-    out = sorted(found.values(), key=lambda x: x[0])
-    return out[-needed:]
+                r = requests.get(
+                    f"{base}/api/v5/market/candles",
+                    params={"instId": INST_ID, "bar": bar, "limit": limit},
+                    timeout=15,
+                )
+                r.raise_for_status()
+                j = r.json()
+                if j.get("code") != "0":
+                    raise RuntimeError(f"OKX error: {j}")
+                rows = [x[:9] for x in j["data"]]
+                df = pd.DataFrame(
+                    rows,
+                    columns=["ts", "open", "high", "low", "close", "vol",
+                             "volCcy", "volCcyQuote", "confirm"],
+                )
+                for col in ["open", "high", "low", "close", "vol"]:
+                    df[col] = df[col].astype(float)
+                df["ts"] = pd.to_datetime(df["ts"].astype("int64"), unit="ms", utc=True)
+                df["confirm"] = df["confirm"].astype(int)
+                return df.sort_values("ts").reset_index(drop=True)
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                time.sleep(1.5)
+    raise RuntimeError(f"Gagal ambil data OKX ({bar}): {last_err}")
 
-def tick_round(x, tick):
-    if tick <= 0 or x == 0: return x
-    decimals = max(0, -int(math.floor(math.log10(tick))))
-    return round(round(x / tick) * tick, decimals + 2)
 
-# ==========================================
-# 3. INDIKATOR TEKNIS
-# ==========================================
-def calc_ema(closes, period):
-    if len(closes) < period: return None
-    k = 2 / (period + 1)
-    ema = sum(closes[:period]) / period
-    for price in closes[period:]:
-        ema = price * k + ema * (1 - k)
-    return ema
+# ----------------------------------------------------------------- indicators
+def rma(s, n):
+    return s.ewm(alpha=1 / n, adjust=False).mean()
 
-def calc_rsi(closes, period=14):
-    if len(closes) < period + 1: return None
-    gains, losses = [], []
-    for i in range(1, len(closes)):
-        ch = closes[i] - closes[i-1]
-        gains.append(max(ch, 0))
-        losses.append(max(-ch, 0))
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-    if avg_loss == 0: return 100.0
-    rs = avg_gain / avg_loss
-    return 100 - 100 / (1 + rs)
 
-def calc_atr(cs, period=14):
-    if len(cs) < period + 1: return None
-    tr_list = []
-    for i in range(1, len(cs)):
-        h, l, c_prev = cs[i][2], cs[i][3], cs[i-1][4]
-        tr = max(h - l, abs(h - c_prev), abs(l - c_prev))
-        tr_list.append(tr)
-    return sum(tr_list[:period]) / period
+def atr(df, n=14):
+    pc = df["close"].shift(1)
+    tr = pd.concat([df["high"] - df["low"], (df["high"] - pc).abs(),
+                    (df["low"] - pc).abs()], axis=1).max(axis=1)
+    return rma(tr, n)
 
-def calc_sma(values, period):
-    if len(values) < period: return None
-    return sum(values[-period:]) / period
 
-# ==========================================
-# 4. STRATEGI INTI: QWEN ALPHA CORE
-# ==========================================
-def build_qwen_alpha_signal(inst, cs_1h, cs_4h, meta):
-    """
-    Logika Murni Alpha Arena:
-    1. Tren 4H harus kuat (EMA50 > EMA200 untuk Long).
-    2. Tren 1H harus searah (Close > EMA50).
-    3. Entry saat pullback: RSI(14) 1H berada di zona 40-60 (tidak overbought/oversold).
-    4. Konfirmasi Volume: Volume 1H > 1.5x rata-rata 20 periode.
-    """
-    if len(cs_1h) < 250 or len(cs_4h) < 250: return None
-    
-    # 1. 4H Trend Filter
-    closes_4h = [c[4] for c in cs_4h]
-    ema50_4h = calc_ema(closes_4h, 50)
-    ema200_4h = calc_ema(closes_4h, 200)
-    if ema50_4h is None or ema200_4h is None: return None
-    
-    is_bull_4h = closes_4h[-1] > ema50_4h > ema200_4h
-    is_bear_4h = closes_4h[-1] < ema50_4h < ema200_4h
-    if not (is_bull_4h or is_bear_4h): return None
-    
-    # 2. 1H Indicators
-    closes_1h = [c[4] for c in cs_1h]
-    ema50_1h = calc_ema(closes_1h, 50)
-    rsi_1h = calc_rsi(closes_1h, 14)
-    atr_1h = calc_atr(cs_1h, 14)
-    
-    # Volume Check
-    volumes_1h = [c[5] for c in cs_1h]
-    avg_vol_1h = calc_sma(volumes_1h, 20)
-    curr_vol_1h = volumes_1h[-1]
-    
-    if ema50_1h is None or rsi_1h is None or atr_1h is None or avg_vol_1h is None: return None
-    if curr_vol_1h < (avg_vol_1h * 1.5): return None # Gagal filter volume
-    
-    curr_c = cs_1h[-1]
-    curr_close = curr_c[4]
-    direction = None
-    
-    # 3. Entry Logic (Pullback Zone)
-    if is_bull_4h:
-        if curr_close > ema50_1h and (40 <= rsi_1h <= 60):
-            direction = "LONG"
-    elif is_bear_4h:
-        if curr_close < ema50_1h and (40 <= rsi_1h <= 60):
-            direction = "SHORT"
-            
-    if direction is None: return None
-    
-    # 4. Risk Setup (Volatility Adjusted)
-    tick = meta.get(inst, {}).get("tick", 0.1)
-    entry = tick_round(curr_close, tick)
-    
-    # SL = 1.5 ATR, TP = 3.0 ATR (RR 1:2)
-    sl_raw = curr_close - (1.5 * atr_1h) if direction == "LONG" else curr_close + (1.5 * atr_1h)
-    tp_raw = curr_close + (3.0 * atr_1h) if direction == "LONG" else curr_close - (3.0 * atr_1h)
-    
-    sl = tick_round(sl_raw, tick)
-    tp = tick_round(tp_raw, tick)
-    
-    return {
-        "signal_id": f"{inst}|{direction}|{curr_c[0]}|QWEN_ALPHA",
-        "symbol": inst, "direction": direction, "timeframe": "1H", "setup": "QWEN_ALPHA_CORE",
-        "strategy": "QWEN_ALPHA",
-        "note": f"4H {'BULL' if is_bull_4h else 'BEAR'} Trend\n1H RSI Pullback ({rsi_1h:.1f})\nVol Spike ({curr_vol_1h/avg_vol_1h:.1f}x)",
-        "signal_candle_time": curr_c[0], "signal_candle_iso": iso(curr_c[0]),
-        "created_at": now(), "entry": entry, "sl": sl, "tp": tp, "rr": 2.0,
-        "atr": atr_1h, "risk_pct": (abs(entry-sl)/entry)*100, "rsi": rsi_1h,
-        "risk_usdt": ACCOUNT_EQUITY * RISK_PER_TRADE,
-        "status": "OPEN", "exit_price": None, "exit_time": None, "result_r": None, "result": None,
-        "max_hold_ms": 24 * 60 * 60 * 1000 # 24 Jam Time Exit
-    }
+def adx(df, n=14):
+    up = df["high"].diff()
+    dn = -df["low"].diff()
+    plus = np.where((up > dn) & (up > 0), up, 0.0)
+    minus = np.where((dn > up) & (dn > 0), dn, 0.0)
+    a = atr(df, n)
+    di_p = 100 * rma(pd.Series(plus, index=df.index), n) / a
+    di_m = 100 * rma(pd.Series(minus, index=df.index), n) / a
+    dx = 100 * (di_p - di_m).abs() / (di_p + di_m)
+    return rma(dx.fillna(0), n)
 
-# ==========================================
-# 5. HISTORY & MONITORING
-# ==========================================
-def load_history():
-    if not os.path.exists(HISTORY_FILE): return {"open": [], "closed": []}
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            d = json.load(f)
-            d.setdefault("open", [])
-            d.setdefault("closed", [])
-            return d
-    except Exception as e:
-        log.error("History load failed: %s", e)
-        return {"open": [], "closed": []}
 
-def save_history(h):
-    tmp = HISTORY_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(h, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, HISTORY_FILE)
+def rsi(s, n=7):
+    d = s.diff()
+    gain = rma(d.clip(lower=0), n)
+    loss = rma((-d).clip(lower=0), n)
+    return 100 - 100 / (1 + gain / loss.replace(0, np.nan))
 
-def monitor(t):
-    """Close Price Only Monitoring"""
-    mon_tf = "15m" # Monitor di 15m untuk akurasi close price
-    start = t["signal_candle_time"]
-    age_ms = max(0, int(time.time() * 1000) - start)
-    needed = max(60, age_ms // 900000 + 24)
-    if needed > 1400: needed = 1400
-        
-    cs = candles(t["symbol"], mon_tf, needed)
-    if not cs: return None
-        
-    max_hold = t.get("max_hold_ms", 24 * 60 * 60 * 1000)
-    
-    for c in [x for x in cs if x[0] >= start]:
-        close_price = c[4]
-        sl, tp = t["sl"], t["tp"]
-        curr_time = c[0]
-        
-        if t["direction"] == "LONG":
-            hit_sl = close_price <= sl
-            hit_tp = close_price >= tp
-        else:
-            hit_sl = close_price >= sl
-            hit_tp = close_price <= tp
-            
-        time_out = (curr_time - start) >= max_hold
-        
-        if hit_sl and hit_tp: exit_price, r, result = sl, -1.0, "LOSS"
-        elif hit_tp: exit_price, r, result = tp, float(t.get("rr", 2.0)), "WIN"
-        elif hit_sl: exit_price, r, result = sl, -1.0, "LOSS"
-        elif time_out: 
-            exit_price = close_price
-            if t["direction"] == "LONG": r = (exit_price - t["entry"]) / (t["entry"] - t["sl"])
-            else: r = (t["entry"] - exit_price) / (t["sl"] - t["entry"])
-            result = "WIN" if r > 0 else "LOSS"
-            if abs(r) < 0.1: result = "BREAKEVEN"
-        else: continue
-            
-        t_out = dict(t)
-        t_out.update({
-            "status": "CLOSED", "exit_price": exit_price, "exit_time": iso(c[0]),
-            "result_r": r, "result": result, "exit_reason": "TIMEOUT" if time_out else ("SL" if hit_sl else "TP")
-        })
-        return t_out
-    return None
 
-# ==========================================
-# 6. STATS REPORT
-# ==========================================
-def send_stats_report(h):
-    ts = h.get("closed", [])
-    if not ts: return
-    
-    try:
-        total = len(ts)
-        wins = [x for x in ts if x.get("result") == "WIN"]
-        losses = [x for x in ts if x.get("result") == "LOSS"]
-        
-        wr = (len(wins) / total) * 100 if total > 0 else 0
-        total_r = sum(float(x.get("result_r", 0)) for x in ts)
-        
-        gp = sum(max(float(x.get("result_r", 0)), 0) for x in ts)
-        gl = abs(sum(min(float(x.get("result_r", 0)), 0) for x in ts))
-        pf = gp / gl if gl else float("inf")
-        
-        eq = peak = dd = 0.0
-        for x in ts:
-            eq += float(x.get("result_r", 0))
-            peak = max(peak, eq)
-            dd = max(dd, peak - eq)
-            
-        streak, st_type = 0, ""
-        for x in reversed(ts):
-            res = x.get("result")
-            if res == "WIN":
-                if st_type == "L": break
-                st_type = "W"; streak += 1
-            elif res == "LOSS":
-                if st_type == "W": break
-                st_type = "L"; streak += 1
-            else: break
-        
-        last_5 = ts[-5:]
-        last_5_str = ""
-        for x in reversed(last_5):
-            emoji = "✅" if x.get("result") == "WIN" else ""
-            last_5_str += f"{emoji} {x.get('symbol','')} {x.get('direction','')} → {x.get('result_r',0):+.2f}R\n"
-        
-        pf_text = "" if math.isinf(pf) else f"{pf:.2f}"
-        
-        recap_text = (
-            f"<b> QWEN ALPHA CORE STATS</b>\n"
-            f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n\n"
-            f"<b>🎯 OVERALL</b>\n"
-            f"Total Trade: {total}\n"
-            f"Win / Loss: {len(wins)} / {len(losses)}\n"
-            f"Win Rate: <b>{wr:.1f}%</b>\n"
-            f"Total PnL: <b>{total_r:+.2f}R</b>\n"
-            f"Profit Factor: {pf_text}\n"
-            f"Max Drawdown: {dd:.2f}R\n"
-            f"Streak: {streak}{st_type}\n\n"
-            f"<b> 5 TRADE TERAKHIR</b>\n"
-            f"{last_5_str}"
-        )
-        tg(recap_text)
-    except Exception as e:
-        log.error(f"Stats error: {e}")
+def percentrank(s, n):
+    a = s.to_numpy()
+    out = np.full(len(a), np.nan)
+    for i in range(n, len(a)):
+        w = a[i - n:i]
+        if np.isnan(w).any() or np.isnan(a[i]):
+            continue
+        out[i] = (w <= a[i]).sum() / n * 100
+    return pd.Series(out, index=s.index)
 
-# ==========================================
-# 7. TELEGRAM & SCAN LOOP
-# ==========================================
+
+def ema(s, n):
+    return s.ewm(span=n, adjust=False).mean()
+
+
+# ----------------------------------------------------------------- layer 1: regime
+def regime_series(df):
+    """0 netral | 1/-1 trend | 2 range | 3/-3 breakout | 9 chaos."""
+    c = df["close"]
+    e9, e21, e50 = ema(c, 9), ema(c, 21), ema(c, 50)
+    basis = c.rolling(20).mean()
+    dev = 2 * c.rolling(20).std(ddof=0)
+    up, lo = basis + dev, basis - dev
+    bbw = (up - lo) / basis
+    bbp = percentrank(bbw, 200)
+    atrp = percentrank(atr(df) / c, 200)
+    volr = df["vol"] / df["vol"].rolling(20).mean()
+    was_sq = bbp.rolling(6).min() < 25
+    expand = bbw > bbw.shift(1)
+    a = adx(df)
+
+    r = pd.Series(0, index=df.index)
+    r[(a < CFG["adx_range"]) & (bbp < 50)] = 2
+    r[(a > CFG["adx_trend"]) & (e9 < e21) & (e21 < e50)] = -1
+    r[(a > CFG["adx_trend"]) & (e9 > e21) & (e21 > e50)] = 1
+    r[was_sq & expand & (volr > 1.5) & (c < lo)] = -3
+    r[was_sq & expand & (volr > 1.5) & (c > up)] = 3
+    r[atrp > CFG["chaos_pct"]] = 9
+    return r, dict(adx=float(a.iloc[-1]), bbw_pct=float(bbp.iloc[-1]),
+                   atr_pct=float(atrp.iloc[-1]))
+
+
+def confirmed_regime(raw, confirm_bars):
+    """Hysteresis: regime baru dipakai setelah bertahan N candle (chaos/breakout langsung)."""
+    reg, cnt, prev = 0, 0, None
+    for v in raw.to_numpy():
+        cnt = cnt + 1 if v == prev else 1
+        prev = v
+        need = 1 if v in (9, 3, -3) else confirm_bars
+        if cnt >= need:
+            reg = int(v)
+    return reg
+
+
+# ----------------------------------------------------------------- layer 2: signals
+def evaluate(d15, reg, dir4h):
+    """Cek sinyal pada candle 15m terakhir yang sudah close. Return (signal|None, alasan)."""
+    c = d15["close"]
+    e9, e21 = ema(c, 9), ema(c, 21)
+    tp = (d15["high"] + d15["low"] + c) / 3
+    day = d15["ts"].dt.date
+    vw = (tp * d15["vol"]).groupby(day).cumsum() / d15["vol"].groupby(day).cumsum()
+    atr1 = atr(d15)
+    basis = c.rolling(20).mean()
+    dev = 2 * c.rolling(20).std(ddof=0)
+    bb_up, bb_lo = basis + dev, basis - dev
+    rsi7 = rsi(c, 7)
+    volr = d15["vol"] / d15["vol"].rolling(20).mean()
+    hi15 = d15["high"].shift(1).rolling(15).max()
+    lo15 = d15["low"].shift(1).rolling(15).min()
+
+    x = d15.iloc[-1]
+    close, open_, high, low = x["close"], x["open"], x["high"], x["low"]
+    v = lambda s: float(s.iloc[-1])  # noqa: E731
+    vol_ok = v(volr) > 1.0
+
+    # session (jam UTC dari open candle)
+    s0, s1 = [int(t) for t in SESSION_UTC.split("-")]
+    if not (s0 <= x["ts"].hour < s1):
+        return None, "di luar sesi"
+    if reg in (0, 9):
+        return None, f"regime {REGIME_NAME[reg]}"
+
+    sig = None  # (module, dir)
+    if reg == 3 and close > v(hi15) and v(volr) > 1.5:
+        sig = ("C", 1)
+    elif reg == -3 and close < v(lo15) and v(volr) > 1.5:
+        sig = ("C", -1)
+    elif reg == 1 and dir4h == 1 and close > v(vw) and low <= v(e21) \
+            and close > v(e9) and close > open_ and vol_ok:
+        sig = ("A", 1)
+    elif reg == -1 and dir4h == -1 and close < v(vw) and high >= v(e21) \
+            and close < v(e9) and close < open_ and vol_ok:
+        sig = ("A", -1)
+    elif reg == 2 and low <= v(bb_lo) and v(rsi7) < 20 and close > open_:
+        sig = ("B", 1)
+    elif reg == 2 and high >= v(bb_up) and v(rsi7) > 80 and close < open_:
+        sig = ("B", -1)
+    if sig is None:
+        return None, "tidak ada setup"
+
+    mod, d = sig
+    sl_dist = v(atr1) * CFG["sl_mult"]
+    if sl_dist < CFG["fee_mult"] * (CFG["fee_rt"] / 100) * close:
+        return None, "SL terlalu sempit vs fee"
+    return dict(
+        module=mod, dir=d, entry=float(close), sl_dist=sl_dist,
+        sl=float(close - d * sl_dist), tp=float(close + d * sl_dist * CFG["rr"]),
+        be_trigger=float(close + d * sl_dist), candle=x["ts"],
+    ), "ok"
+
+
+# ----------------------------------------------------------------- telegram
 def tg(text):
-    if not TELEGRAM: return
+    if not TOKEN or not CHAT_ID:
+        print("[DRY-RUN] Token/chat id kosong. Pesan:\n" + text)
+        return
     try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                      json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
-    except Exception as e:
-        log.error("Telegram error: %s", e)
+        r = requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML",
+                  "disable_web_page_preview": "true"},
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        # jangan cetak pesan asli: URL-nya memuat token (log repo publik terbuka)
+        raise RuntimeError(f"Telegram request gagal: {type(e).__name__}") from None
+    if not r.ok:
+        raise RuntimeError(f"Telegram gagal: HTTP {r.status_code}")
 
-def signal_message(s):
-    risk = abs(s["entry"] - s["sl"])
-    fee_r = (2 * FEE_PER_SIDE * s["entry"] / risk) if risk > 0 else 0.0
-    
+
+def fmt(p):
+    return f"{p:,.1f}"
+
+
+def signal_message(s, reg, dir4h, price_now):
+    side = "LONG" if s["dir"] == 1 else "SHORT"
+    icon = "🟢" if s["dir"] == 1 else "🔴"
+    sl_pct = s["sl_dist"] / s["entry"] * 100
+    tp_pct = sl_pct * CFG["rr"]
+    risk_usd = CFG["equity"] * CFG["risk_pct"] / 100
+    qty = min(risk_usd / s["sl_dist"], CFG["equity"] * CFG["max_lev"] / s["entry"])
+    notional = qty * s["entry"]
     return (
-        f"<b>🧠 QWEN ALPHA CORE SIGNAL</b>\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"<b>{s['symbol']}</b> · <b>{s['direction']}</b> · 1H\n\n"
-        f"{s['note']}\n\n"
-        f"<b>TRADE PLAN</b>\n"
-        f"Entry: <code>{s['entry']}</code>\n"
-        f"SL: <code>{s['sl']}</code> (1.5 ATR)\n"
-        f"TP: <code>{s['tp']}</code> (3.0 ATR)\n"
-        f"RR: <b>1:2.00</b>\n"
-        f"Fee ≈ {fee_r:.2f}R\n\n"
-        f"Risk: {s['risk_usdt']:.2f} USDT\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ Max Hold 24 Jam"
+        f"{icon} <b>{side} {INST_ID}</b>\n"
+        f"Modul {s['module']}: {MODULE_NAME[s['module']]}\n"
+        f"Regime 1H: <b>{REGIME_NAME[reg]}</b> | Arah 4H: {'naik' if dir4h == 1 else 'turun'}\n\n"
+        f"Entry : <code>{fmt(s['entry'])}</code> (close 15m)\n"
+        f"SL    : <code>{fmt(s['sl'])}</code> (-{sl_pct:.2f}%)\n"
+        f"TP    : <code>{fmt(s['tp'])}</code> (+{tp_pct:.2f}%) RR 1:{CFG['rr']:g}\n\n"
+        f"Geser SL ke BE saat harga menyentuh <code>{fmt(s['be_trigger'])}</code> (+1R)\n"
+        f"Time stop: {CFG['time_stop']} candle 15m ({CFG['time_stop'] * 15 // 60} jam)\n\n"
+        f"Contoh size (equity {CFG['equity']:g} USDT, risiko {CFG['risk_pct']:g}%): "
+        f"{qty:.4f} BTC, notional {notional:,.0f} USDT (~{notional / CFG['equity']:.1f}x)\n"
+        f"Harga sekarang: {fmt(price_now)} | Candle: {s['candle']:%Y-%m-%d %H:%M} UTC\n"
+        f"<i>Sinyal bukan nasihat keuangan. Pasang SL, jangan entry jika harga sudah jauh dari level.</i>"
     )
 
-def check_open(h):
-    if not h["open"]: return 0
-    remain, closed = [], []
-    for t in h["open"]:
-        try:
-            result = monitor(t)
-            if result: closed.append(result)
-            else: remain.append(t)
-        except Exception as e:
-            log.error("Monitor %s failed: %s", t["symbol"], e)
-            remain.append(t)
-            
-    h["open"] = remain
-    if closed:
-        h["closed"].extend(closed)
-        save_history(h)
-        
-        for t in closed:
-            emoji = "✅" if t["result"] == "WIN" else "❌"
-            tg(
-                f"<b>{emoji} TRADE CLOSED ({t.get('exit_reason', '')})</b>\n"
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"<b>{t['symbol']}</b> {t['direction']}\n\n"
-                f"<b>HASIL: {'WIN 🎯' if t['result'] == 'WIN' else 'LOSS 🛑'}</b>\n"
-                f"R: <b>{t['result_r']:+.2f}R</b>\n\n"
-                f"Entry: <code>{t['entry']}</code>\n"
-                f"Exit: <code>{t['exit_price']}</code>\n"
-                f"━━━━━━━━━━━━━━━━━━"
-            )
-        send_stats_report(h)
-    return len(closed)
 
-def scan(h):
-    pairs = top_pairs()
-    if not pairs: return
-        
-    log.info("Scanning %s pairs (Qwen Alpha Core)...", len(pairs))
-    created = 0
-    meta = get_meta()
-    
-    for inst in pairs:
-        if len(h["open"]) >= MAX_OPEN: break
-            
-        cs_1h = candles(inst, "1H", 250)
-        cs_4h = candles(inst, "4H", 250)
-        if not cs_1h or not cs_4h: continue
-            
-        sig = build_qwen_alpha_signal(inst, cs_1h, cs_4h, meta)
-        if isinstance(sig, dict):
-            if not any(x["signal_id"] == sig["signal_id"] for x in h["open"] + h["closed"]):
-                h["open"].append(sig)
-                save_history(h)
-                tg(signal_message(sig))
-                created += 1
-                log.info("NEW QWEN ALPHA SIGNAL: %s %s", inst, sig["direction"])
-            
-    log.info("Scan complete. Created %s signals.", created)
+# ----------------------------------------------------------------- main
+def load_context():
+    d15_all = fetch_candles(ENTRY_TF)
+    time.sleep(0.3)
+    d1h_all = fetch_candles(REG_TF)
+    time.sleep(0.3)
+    d4h_all = fetch_candles(DIR_TF)
+    price_now = float(d15_all["close"].iloc[-1])  # termasuk candle berjalan
+    d15 = d15_all[d15_all["confirm"] == 1].reset_index(drop=True)
+    d1h = d1h_all[d1h_all["confirm"] == 1].reset_index(drop=True)
+    d4h = d4h_all[d4h_all["confirm"] == 1].reset_index(drop=True)
+    raw, stats = regime_series(d1h)
+    reg = confirmed_regime(raw, CFG["confirm_bars"])
+    dir4h = 1 if d4h["close"].iloc[-1] > ema(d4h["close"], 21).iloc[-1] else -1
+    return d15, reg, int(raw.iloc[-1]), stats, dir4h, price_now
+
 
 def main():
-    log.info("==========================================")
-    log.info("QWEN-ALPHA-CORE V1.0")
-    log.info("Pure Alpha Arena Winning Strategy")
-    log.info("==========================================")
-    
-    if not TELEGRAM: log.warning("Telegram dinonaktifkan.")
-        
-    h = load_history()
-    
-    while True:
-        started = time.time()
-        try:
-            check_open(h)
-            scan(h)
-        except KeyboardInterrupt:
-            log.info("Bot dihentikan manual.")
-            break
-        except Exception as e:
-            log.error("Loop error: %s", e)
-            
-        elapsed = time.time() - started
-        sleep_for = max(1, SCAN_INTERVAL - elapsed)
-        
-        if not RUN_FOREVER:
-            log.info("Mode sekali jalan. Selesai.")
-            break
-            
-        log.info("Tidur %s detik...", sleep_for)
-        time.sleep(sleep_for)
+    mode = sys.argv[1] if len(sys.argv) > 1 else "scan"
+    if mode == "test":
+        tg("✅ Bot terhubung. Regime-First Scalper siap memantau "
+           f"{INST_ID} (entry {ENTRY_TF}, regime {REG_TF}, arah {DIR_TF}).")
+        return
+
+    d15, reg, raw_now, stats, dir4h, price_now = load_context()
+
+    if mode == "status":
+        tg(
+            f"📊 <b>Status {INST_ID}</b>\n"
+            f"Harga: {fmt(price_now)}\n"
+            f"Regime 1H (terkonfirmasi): <b>{REGIME_NAME[reg]}</b>\n"
+            f"Regime candle terakhir: {REGIME_NAME[raw_now]}\n"
+            f"ADX {stats['adx']:.1f} | BB-width pctile {stats['bbw_pct']:.0f} | "
+            f"ATR pctile {stats['atr_pct']:.0f}\n"
+            f"Arah 4H: {'naik' if dir4h == 1 else 'turun'}"
+        )
+        return
+
+    # --- scan
+    last = d15.iloc[-1]
+    close_time = last["ts"] + timedelta(minutes=15)
+    age_min = (datetime.now(timezone.utc) - close_time).total_seconds() / 60
+    print(f"[{datetime.now(timezone.utc):%F %T}Z] regime={REGIME_NAME[reg]} "
+          f"dir4h={dir4h} candle={last['ts']:%F %R} umur={age_min:.1f}m")
+
+    if age_min > CFG["fresh_min"]:
+        print("Candle terakhir sudah terlalu lama (run telat) -> skip")
+        return
+
+    sig, why = evaluate(d15, reg, dir4h)
+    if sig is None:
+        print(f"Tidak ada sinyal: {why}")
+        return
+    if abs(price_now - sig["entry"]) > CFG["stale_frac"] * sig["sl_dist"]:
+        print("Sinyal basi: harga sudah bergeser jauh dari entry -> skip")
+        return
+    tg(signal_message(sig, reg, dir4h, price_now))
+    print("Sinyal terkirim.")
+
 
 if __name__ == "__main__":
     main()
