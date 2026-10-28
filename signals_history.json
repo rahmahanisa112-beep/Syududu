@@ -76,16 +76,16 @@
   "closed": [],
   "last_report_ts": 1793223518.9522362,
   "smc_rej": {
-    "scans": 4,
-    "pairs": 597,
+    "scans": 5,
+    "pairs": 745,
     "signals": 2,
     "stages": {
-      "Displacement": 111,
-      "Struktur": 130,
-      "Sweep": 87,
-      "Retest": 143,
-      "Konfirmasi": 112,
-      "Volume": 11,
+      "Displacement": 139,
+      "Struktur": 164,
+      "Sweep": 127,
+      "Retest": 168,
+      "Konfirmasi": 132,
+      "Volume": 12,
       "SL/RR": 1
     },
     "near": [
@@ -115,6 +115,6 @@
       }
     ]
   },
-  "last_smc_candle": 1793226600000,
+  "last_smc_candle": 1793229300000,
   "last_online_day": "2026-10-28"
 }
