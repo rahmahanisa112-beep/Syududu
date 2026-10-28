@@ -2,39 +2,57 @@ name: scan
 
 on:
   schedule:
-    # 1 menit setelah candle 15m close, hanya jam sesi (07:00-17:00 UTC = 14:00-24:00 WIB)
-    - cron: "1,16,31,46 7-16 * * *"
-    - cron: "1 17 * * *"
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: "scan | status | test"
-        type: choice
-        default: status
-        options: [scan, status, test]
+    - cron: "*/20 * * * *"     # tiap 20 menit, 24 jam penuh
+  workflow_dispatch:           # tombol "Run workflow" manual
 
-permissions:
-  contents: read
-
+# Dua run tidak boleh jalan bersamaan
 concurrency:
   group: scan
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
-  run:
+  scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements.txt
+          python-version: "3.11"
+
+      - run: pip install requests
+
       - name: Run bot
-        run: python signal_bot.py ${{ github.event.inputs.mode || 'scan' }}
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EQUITY: ${{ vars.EQUITY || '1000' }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          TOP_PAIRS: "150"
+          SMC_MAX_OPEN: "5"
+          SMC_MIN_RISK_PCT: "0.004"
+          MAX_ACTIVE_SMC_PER_DIRECTION: "3"
+          MAX_NEW_SMC_PER_CANDLE: "2"
+          # --- BingX auto-execution ---
+          # BINGX_API_KEY: ${{ secrets.BINGX_API_KEY }}
+          # BINGX_API_SECRET: ${{ secrets.BINGX_API_SECRET }}
+          # BINGX_RISK_USDT: "0.30"
+          # BINGX_LEVERAGE: "20"
+        run: python signal_bot.py
+
+      - name: Commit signal history
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f signals_history.json ]; then git add signals_history.json; fi
+          if git diff --cached --quiet; then
+            echo "Tidak ada perubahan riwayat."
+          else
+            git commit -m "Update signal history"
+            git pull --rebase --autostash origin "${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
