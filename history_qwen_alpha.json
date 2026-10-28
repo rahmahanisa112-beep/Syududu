@@ -1,5 +1,32 @@
 {
-  "open": [],
+  "open": [
+    {
+      "signal_id": "ADA-USDT-SWAP|SHORT|1793210400000|QWEN_ALPHA",
+      "symbol": "ADA-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "1H",
+      "setup": "QWEN_ALPHA_CORE",
+      "strategy": "QWEN_ALPHA",
+      "note": "4H BEAR Trend\n1H RSI Pullback (49.5)\nVol Spike (3.2x)",
+      "signal_candle_time": 1793210400000,
+      "signal_candle_iso": "2026-10-28T18:00:00+00:00",
+      "created_at": "2026-10-28T19:42:49.412872+00:00",
+      "entry": 0.204,
+      "sl": 0.2077,
+      "tp": 0.1966,
+      "rr": 2.0,
+      "atr": 0.0024571428571428583,
+      "risk_pct": 1.8137254901960826,
+      "rsi": 49.47916666666673,
+      "risk_usdt": 0.5,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null,
+      "max_hold_ms": 86400000
+    }
+  ],
   "closed": [
     {
       "signal_id": "AVAX-USDT-SWAP|SHORT|1793019600000|QWEN_ALPHA",
