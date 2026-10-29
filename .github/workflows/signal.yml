@@ -1,53 +1,78 @@
-name: OKX BTC Signal
+
+name: BTC OKX Signal Bot
+
 on:
   schedule:
-    - cron: '5 * * * *'
+    - cron: "0 * * * *"
+
   workflow_dispatch:
     inputs:
       test:
-        description: 'Send Telegram test message'
+        description: "Test Telegram"
+        required: false
         type: boolean
         default: false
+
 permissions:
   contents: read
+
 concurrency:
-  group: okx-btc-signal
+  group: btc-okx-signal
   cancel-in-progress: false
+
 jobs:
   signal:
+    name: Run BTC OKX Signal
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           cache: pip
-      - run: pip install -r requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Restore signal history
         uses: actions/cache/restore@v4
         with:
-          path: last_signal.json
-          key: signal-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: signal_history.json
+          key: signal-history-${{ github.run_id }}
           restore-keys: |
-            signal-state-
+            signal-history-
+
       - name: Run signal bot
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TEST_MODE: ${{ inputs.test }}
         run: |
-          if [ "$TEST_MODE" = "true" ]; then python main.py --test; else python main.py; fi
+          if [ "$TEST_MODE" = "true" ]; then
+            python main.py --test
+          else
+            python main.py
+          fi
+
       - name: Save signal history
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: last_signal.json
-          key: signal-state-${{ github.run_id }}-${{ github.run_attempt }}
-      - name: Upload log
+          path: signal_history.json
+          key: signal-history-${{ github.run_id }}
+
+      - name: Upload bot log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bot-log-${{ github.run_id }}
           path: bot.log
           if-no-files-found: ignore
+          retention-days: 7
