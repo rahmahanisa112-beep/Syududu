@@ -1,0 +1,37 @@
+name: backtest-inst
+
+# Jalankan manual: Actions -> backtest-inst -> Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Panjang data (hari). 730 = 2 tahun"
+        default: "730"
+      end:
+        description: "Tanggal akhir YYYY-MM-DD (kosong = sekarang)"
+        default: ""
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Run backtest
+        env:
+          DAYS: ${{ inputs.days }}
+          END: ${{ inputs.end }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GATE_MODE: "PROXY"
+        run: python backtest_inst.py --days "$DAYS" --end "$END" --telegram
+      - name: Save results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results
+          path: bt_out/
