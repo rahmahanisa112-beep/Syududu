@@ -1,5 +1,42 @@
 {
-  "open": [],
+  "open": [
+    {
+      "signal_id": "BTW-USDT-SWAP|SHORT|1793246400000|SMC",
+      "symbol": "BTW-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "15m",
+      "setup": "SMC_SCALP",
+      "note": "SMC CHOCH BEAR | Sweep high @ 1.7512 | OB [1.7694-1.7848] | Disp bar 197 | RSI 57.5 | Vol 0.92x",
+      "signal_candle_time": 1793246400000,
+      "signal_candle_iso": "2026-10-29T04:00:00+00:00",
+      "created_at": "2026-10-29T04:24:56.709421+00:00",
+      "entry": 1.7631,
+      "sl": 1.7905,
+      "tp": 1.7152,
+      "rr": 1.75,
+      "atr": 0.01889734572761102,
+      "sl_atr": 1.4483094140725823,
+      "ema50": 0.0,
+      "ema200": 0.0,
+      "rsi": 57.49972044564941,
+      "adx": 0.0,
+      "volume_ratio": 0.9186333554145836,
+      "rsi_deadzone": false,
+      "regime": "BEAR",
+      "structure": "CHOCH",
+      "bos": "CHOCH",
+      "pullback": null,
+      "score": null,
+      "score_reasons": [],
+      "risk_usdt": 4.0,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null,
+      "monitor_tf_ms": 900000
+    }
+  ],
   "closed": [
     {
       "signal_id": "SAND-USDT-SWAP|LONG|1793222100000|SMC",
@@ -112,17 +149,27 @@
   ],
   "last_report_ts": 1793240701.915942,
   "smc_rej": {
-    "scans": 2,
-    "pairs": 294,
-    "signals": 0,
+    "scans": 3,
+    "pairs": 441,
+    "signals": 1,
     "stages": {
-      "Retest": 69,
-      "Sweep": 72,
-      "Struktur": 52,
-      "Displacement": 83,
-      "Konfirmasi": 18
+      "Retest": 97,
+      "Sweep": 118,
+      "Struktur": 86,
+      "Displacement": 111,
+      "Konfirmasi": 26,
+      "Volume": 1,
+      "SL/RR": 1
     },
     "near": [
+      {
+        "depth": 9,
+        "text": "HUMA-USDT-SWAP → SL/RR: SHORT SL 3.06 ATR (perlu 0.35-2.5)"
+      },
+      {
+        "depth": 8,
+        "text": "OL-USDT-SWAP → Volume: LONG CHOCH volume 0.27x (min 0.75x)"
+      },
       {
         "depth": 6,
         "text": "NOT-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (6 bar lalu)"
@@ -138,17 +185,9 @@
       {
         "depth": 6,
         "text": "XDP-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
-      },
-      {
-        "depth": 6,
-        "text": "AEON-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (1 bar lalu)"
-      },
-      {
-        "depth": 6,
-        "text": "BIGTIME-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (4 bar lalu)"
       }
     ]
   },
-  "last_smc_candle": 1793242800000,
+  "last_smc_candle": 1793246400000,
   "last_online_day": "2026-10-29"
 }
