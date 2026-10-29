@@ -204,8 +204,13 @@ def main():
         temp.replace(STATE)
         logging.info('Signal sent and state saved')
         return 0
-    finally:
-        exchange.close()
+        except Exception:
+        logging.exception("Bot failed")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 if __name__ == '__main__':
