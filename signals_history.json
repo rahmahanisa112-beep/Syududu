@@ -1,42 +1,6 @@
 {
   "open": [
     {
-      "signal_id": "PEPE-USDT-SWAP|LONG|1793250000000|SMC",
-      "symbol": "PEPE-USDT-SWAP",
-      "direction": "LONG",
-      "timeframe": "15m",
-      "setup": "SMC_SCALP",
-      "note": "SMC CHOCH BEAR | Sweep low @ 4.9986e-06 | OB [4.984e-06-5.0526e-06] | Disp bar 198 | RSI 65.6 | Vol 1.88x",
-      "signal_candle_time": 1793250000000,
-      "signal_candle_iso": "2026-10-29T05:00:00+00:00",
-      "created_at": "2026-10-29T05:21:22.703412+00:00",
-      "entry": 5.1542e-06,
-      "sl": 4.9593e-06,
-      "tp": 5.4953e-06,
-      "rr": 1.75,
-      "atr": 8.240204248861072e-08,
-      "sl_atr": 2.3654827824628724,
-      "ema50": 0.0,
-      "ema200": 0.0,
-      "rsi": 65.55570739224314,
-      "adx": 0.0,
-      "volume_ratio": 1.8798114964872397,
-      "rsi_deadzone": false,
-      "regime": "BEAR",
-      "structure": "CHOCH",
-      "bos": "CHOCH",
-      "pullback": null,
-      "score": null,
-      "score_reasons": [],
-      "risk_usdt": 4.0,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "monitor_tf_ms": 900000
-    },
-    {
       "signal_id": "PARTI-USDT-SWAP|SHORT|1793250000000|SMC",
       "symbol": "PARTI-USDT-SWAP",
       "direction": "SHORT",
@@ -253,19 +217,55 @@
       "result_r": -1.0,
       "result": "LOSS",
       "monitor_tf_ms": 900000
+    },
+    {
+      "signal_id": "PEPE-USDT-SWAP|LONG|1793250000000|SMC",
+      "symbol": "PEPE-USDT-SWAP",
+      "direction": "LONG",
+      "timeframe": "15m",
+      "setup": "SMC_SCALP",
+      "note": "SMC CHOCH BEAR | Sweep low @ 4.9986e-06 | OB [4.984e-06-5.0526e-06] | Disp bar 198 | RSI 65.6 | Vol 1.88x",
+      "signal_candle_time": 1793250000000,
+      "signal_candle_iso": "2026-10-29T05:00:00+00:00",
+      "created_at": "2026-10-29T05:21:22.703412+00:00",
+      "entry": 5.1542e-06,
+      "sl": 4.9593e-06,
+      "tp": 5.4953e-06,
+      "rr": 1.75,
+      "atr": 8.240204248861072e-08,
+      "sl_atr": 2.3654827824628724,
+      "ema50": 0.0,
+      "ema200": 0.0,
+      "rsi": 65.55570739224314,
+      "adx": 0.0,
+      "volume_ratio": 1.8798114964872397,
+      "rsi_deadzone": false,
+      "regime": "BEAR",
+      "structure": "CHOCH",
+      "bos": "CHOCH",
+      "pullback": null,
+      "score": null,
+      "score_reasons": [],
+      "risk_usdt": 4.0,
+      "status": "CLOSED",
+      "exit_price": 4.9593e-06,
+      "exit_time": "2026-10-29T07:45:00+00:00",
+      "result_r": -1.0,
+      "result": "LOSS",
+      "monitor_tf_ms": 900000
     }
   ],
   "last_report_ts": 1793258854.8972058,
   "smc_rej": {
-    "scans": 1,
-    "pairs": 147,
+    "scans": 2,
+    "pairs": 294,
     "signals": 0,
     "stages": {
-      "Retest": 33,
-      "Struktur": 31,
-      "Konfirmasi": 13,
-      "Sweep": 57,
-      "Displacement": 13
+      "Retest": 64,
+      "Struktur": 64,
+      "Konfirmasi": 29,
+      "Sweep": 103,
+      "Displacement": 34
     },
     "near": [
       {
@@ -294,6 +294,6 @@
       }
     ]
   },
-  "last_smc_candle": 1793257200000,
+  "last_smc_candle": 1793260800000,
   "last_online_day": "2026-10-29"
 }
