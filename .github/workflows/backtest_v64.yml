@@ -1,0 +1,101 @@
+
+name: ALPHAQUANT V6.4 Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Backtest days (7, 30, 365, 730)"
+        required: true
+        default: "730"
+      end:
+        description: "End date YYYY-MM-DD (empty = now)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: baseline
+            adaptive: "0"
+            sweep: "9"
+          - scenario: regime_adaptive
+            adaptive: "1"
+            sweep: "9"
+          - scenario: sweep_extended
+            adaptive: "0"
+            sweep: "13"
+          - scenario: combined
+            adaptive: "1"
+            sweep: "13"
+
+    env:
+      GATE_MODE: PROXY
+      ACCOUNT_EQUITY: "1000"
+      BASE_RISK: "0.005"
+      FEE_PER_SIDE: "0.0005"
+      SLIP_PER_SIDE: "0.0002"
+      GEOM_MIN_NET_RR: "1.0"
+      REGIME_ADAPTIVE: ${{ matrix.adaptive }}
+      SWEEP_LOOKBACK: ${{ matrix.sweep }}
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install requirements
+        run: python -m pip install -r requirements.txt
+
+      - name: Verify modules
+        run: |
+          python -m py_compile signal_bot.py backtest_inst.py
+          python - <<'PY'
+          import signal_bot as b
+          assert all(
+              hasattr(b, x)
+              for x in (
+                  'TF15_MS',
+                  'gate_pipeline',
+                  'close_fill',
+                  'regime'
+              )
+          )
+          print(
+              'OK',
+              b.REGIME_ADAPTIVE,
+              b.SWEEP_LOOKBACK
+          )
+          PY
+
+      - name: Run backtest
+        env:
+          DAYS: ${{ inputs.days }}
+          END: ${{ inputs.end }}
+        run: |
+          python backtest_inst.py \
+            --days "$DAYS" \
+            --end "$END" \
+            --out bt_out
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alphaquant-v64-${{ matrix.scenario }}
+          path: bt_out/
+          if-no-files-found: warn
