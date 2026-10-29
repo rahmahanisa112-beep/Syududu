@@ -255,47 +255,45 @@
       "monitor_tf_ms": 900000
     }
   ],
-  "last_report_ts": 1793240701.915942,
+  "last_report_ts": 1793258854.8972058,
   "smc_rej": {
-    "scans": 5,
-    "pairs": 700,
-    "signals": 4,
+    "scans": 1,
+    "pairs": 147,
+    "signals": 0,
     "stages": {
-      "Retest": 127,
-      "Sweep": 250,
-      "Struktur": 139,
-      "Displacement": 135,
-      "Konfirmasi": 40,
-      "Volume": 3,
-      "SL/RR": 2
+      "Retest": 33,
+      "Struktur": 31,
+      "Konfirmasi": 13,
+      "Sweep": 57,
+      "Displacement": 13
     },
     "near": [
       {
-        "depth": 9,
-        "text": "HUMA-USDT-SWAP → SL/RR: SHORT SL 3.06 ATR (perlu 0.35-2.5)"
-      },
-      {
-        "depth": 9,
-        "text": "HOME-USDT-SWAP → SL/RR: LONG SL 3.31 ATR (perlu 0.35-2.5)"
-      },
-      {
-        "depth": 8,
-        "text": "OL-USDT-SWAP → Volume: LONG CHOCH volume 0.27x (min 0.75x)"
-      },
-      {
-        "depth": 8,
-        "text": "DOOD-USDT-SWAP → Volume: LONG CHOCH volume 0.43x (min 0.75x)"
-      },
-      {
-        "depth": 8,
-        "text": "GPS-USDT-SWAP → Volume: SHORT CHOCH volume 0.20x (min 0.75x)"
+        "depth": 6,
+        "text": "BONK-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
       },
       {
         "depth": 6,
-        "text": "NOT-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (6 bar lalu)"
+        "text": "DOOD-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (6 bar lalu)"
+      },
+      {
+        "depth": 6,
+        "text": "BOME-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (5 bar lalu)"
+      },
+      {
+        "depth": 6,
+        "text": "BLUR-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (6 bar lalu)"
+      },
+      {
+        "depth": 6,
+        "text": "IOST-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
+      },
+      {
+        "depth": 6,
+        "text": "OL-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (2 bar lalu)"
       }
     ]
   },
-  "last_smc_candle": 1793253600000,
+  "last_smc_candle": 1793257200000,
   "last_online_day": "2026-10-29"
 }
