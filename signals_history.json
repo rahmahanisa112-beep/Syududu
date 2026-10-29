@@ -404,5 +404,6 @@
     ]
   },
   "last_smc_candle": 1793268000000,
-  "last_online_day": "2026-10-29"
+  "last_online_day": "2026-10-29",
+  "last_candle": 1793268900000
 }
