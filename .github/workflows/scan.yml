@@ -1,11 +1,11 @@
 name: scan
 
+# V6.0 Golden Pocket 15m: scan tiap candle 15m. Jadwal 15 menit supaya tidak ada candle yang terlewat.
 on:
   schedule:
-    - cron: "*/20 * * * *"     # tiap 20 menit, 24 jam penuh
-  workflow_dispatch:           # tombol "Run workflow" manual
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
 
-# Dua run tidak boleh jalan bersamaan
 concurrency:
   group: scan
   cancel-in-progress: false
@@ -32,15 +32,11 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TOP_PAIRS: "150"
-          SMC_MAX_OPEN: "5"
-          SMC_MIN_RISK_PCT: "0.004"
-          MAX_ACTIVE_SMC_PER_DIRECTION: "3"
-          MAX_NEW_SMC_PER_CANDLE: "2"
-          # --- BingX auto-execution ---
-          # BINGX_API_KEY: ${{ secrets.BINGX_API_KEY }}
-          # BINGX_API_SECRET: ${{ secrets.BINGX_API_SECRET }}
-          # BINGX_RISK_USDT: "0.30"
-          # BINGX_LEVERAGE: "20"
+          MAX_OPEN: "1"                 # playbook: tidak ada posisi kedua selama posisi pertama aktif
+          MAX_LOSSES_PER_DAY: "2"       # playbook: stop harian setelah 2 loss beruntun
+          RISK_PER_TRADE: "0.0025"      # 0,25% per trade (contoh di playbook)
+          ACCOUNT_EQUITY: "1000"
+          FEE_PER_SIDE: "0.0005"
         run: python signal_bot.py
 
       - name: Commit signal history
