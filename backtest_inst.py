@@ -64,7 +64,8 @@ def run(c15, c1h, c4h, tick, log_every=0):
             gates["Error"] += 1
             continue
         if not sigs:
-            gates[f"LONG {gl[0]}" if gl else "-"] += 1
+            gates[f"LONG {gl[0]}" if gl else "LONG ?"] += 1
+            gates[f"SHORT {gs[0]}" if gs else "SHORT ?"] += 1
             continue
         direction, (s, _g) = next(iter(sigs.items()))
         t = {"direction": direction, "entry": s["entry"], "sl": s["sl"], "D": s["D"],
@@ -85,7 +86,7 @@ def run(c15, c1h, c4h, tick, log_every=0):
 def summarize(trades, gates):
     n = len(trades)
     if n == 0:
-        return f"0 trade.\nGate yang menggugurkan:\n" + "\n".join(f"  {k}: {v}" for k, v in gates.most_common(12))
+        return f"0 trade.\nGate yang menggugurkan (LONG dan SHORT):\n" + "\n".join(f"  {k}: {v}" for k, v in gates.most_common(30))
     wins = [t for t in trades if t["net_r"] > 0]
     gp = sum(t["net_r"] for t in trades if t["net_r"] > 0)
     gl = -sum(t["net_r"] for t in trades if t["net_r"] <= 0)
@@ -108,7 +109,7 @@ def summarize(trades, gates):
         f"Target 60%  : {'TERCAPAI' if wr >= 0.60 else 'BELUM TERCAPAI'} (WR {wr*100:.1f}%)",
         "",
         "Gate yang paling sering menggugurkan:",
-    ] + [f"  {k}: {v}" for k, v in gates.most_common(10)]
+    ] + [f"  {k}: {v}" for k, v in gates.most_common(30)]
     return "\n".join(lines)
 
 def main():
