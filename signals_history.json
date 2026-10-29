@@ -107,6 +107,42 @@
       "result_r": null,
       "result": null,
       "monitor_tf_ms": 900000
+    },
+    {
+      "signal_id": "BASED-USDT-SWAP|LONG|1793268000000|SMC",
+      "symbol": "BASED-USDT-SWAP",
+      "direction": "LONG",
+      "timeframe": "15m",
+      "setup": "SMC_SCALP",
+      "note": "SMC BOS BULL | Sweep low @ 0.05205 | OB [0.05183-0.05225] | Disp bar 195 | RSI 47.1 | Vol 0.97x",
+      "signal_candle_time": 1793268000000,
+      "signal_candle_iso": "2026-10-29T10:00:00+00:00",
+      "created_at": "2026-10-29T10:26:36.166768+00:00",
+      "entry": 0.05208,
+      "sl": 0.05172,
+      "tp": 0.05271,
+      "rr": 1.75,
+      "atr": 0.0003676102749642608,
+      "sl_atr": 0.9800680422338632,
+      "ema50": 0.0,
+      "ema200": 0.0,
+      "rsi": 47.111757033718995,
+      "adx": 0.0,
+      "volume_ratio": 0.9718550522711336,
+      "rsi_deadzone": true,
+      "regime": "BULL",
+      "structure": "BOS",
+      "bos": "BOS",
+      "pullback": null,
+      "score": null,
+      "score_reasons": [],
+      "risk_usdt": 4.0,
+      "status": "OPEN",
+      "exit_price": null,
+      "exit_time": null,
+      "result_r": null,
+      "result": null,
+      "monitor_tf_ms": 900000
     }
   ],
   "closed": [
@@ -329,17 +365,22 @@
   ],
   "last_report_ts": 1793258854.8972058,
   "smc_rej": {
-    "scans": 3,
-    "pairs": 361,
-    "signals": 2,
+    "scans": 4,
+    "pairs": 506,
+    "signals": 3,
     "stages": {
-      "Retest": 86,
-      "Struktur": 81,
-      "Konfirmasi": 34,
-      "Sweep": 113,
-      "Displacement": 45
+      "Retest": 114,
+      "Struktur": 117,
+      "Konfirmasi": 51,
+      "Sweep": 148,
+      "Displacement": 72,
+      "Volume": 1
     },
     "near": [
+      {
+        "depth": 8,
+        "text": "ADA-USDT-SWAP → Volume: SHORT CHOCH volume 0.68x (min 0.75x)"
+      },
       {
         "depth": 6,
         "text": "BONK-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
@@ -359,13 +400,9 @@
       {
         "depth": 6,
         "text": "IOST-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
-      },
-      {
-        "depth": 6,
-        "text": "OL-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (2 bar lalu)"
       }
     ]
   },
-  "last_smc_candle": 1793264400000,
+  "last_smc_candle": 1793268000000,
   "last_online_day": "2026-10-29"
 }
