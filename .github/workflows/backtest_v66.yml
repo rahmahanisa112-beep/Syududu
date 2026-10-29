@@ -1,0 +1,49 @@
+name: ALPHAQUANT V6.6 Event Driven
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Days (start with 30)"
+        required: true
+        default: "30"
+      end:
+        description: "End UTC date YYYY-MM-DD (optional)"
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  event_backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GATE_MODE: PROXY
+      REGIME_ADAPTIVE: "1"
+      ACCOUNT_EQUITY: "1000"
+      BASE_RISK: "0.005"
+      FEE_PER_SIDE: "0.0005"
+      SLIP_PER_SIDE: "0.0002"
+      GEOM_MIN_NET_RR: "1.0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - name: Validate
+        run: |
+          python -m py_compile research_engine.py backtest_v65.py v66_engine.py backtest_v66.py
+          python -c "from v66_engine import step; from backtest_v66 import run; print('V6.6 imports PASS')"
+      - name: Run
+        env:
+          DAYS: ${{ inputs.days }}
+          END: ${{ inputs.end }}
+        run: python backtest_v66.py --days "$DAYS" --end "$END" --out bt_out
+      - name: Upload diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alphaquant-v66-event-driven
+          path: bt_out/
+          if-no-files-found: warn
