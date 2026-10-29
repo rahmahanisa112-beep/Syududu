@@ -1,78 +1,5 @@
 {
-  "open": [
-    {
-      "signal_id": "AI-USDT-SWAP|SHORT|1793226600000|SMC",
-      "symbol": "AI-USDT-SWAP",
-      "direction": "SHORT",
-      "timeframe": "15m",
-      "setup": "SMC_SCALP",
-      "note": "SMC CHOCH BULL | Sweep high @ 0.01794 | OB [0.01793-0.018] | Disp bar 197 | RSI 46.9 | Vol 1.89x",
-      "signal_candle_time": 1793226600000,
-      "signal_candle_iso": "2026-10-28T22:30:00+00:00",
-      "created_at": "2026-10-28T22:58:57.706084+00:00",
-      "entry": 0.01789,
-      "sl": 0.01803,
-      "tp": 0.01765,
-      "rr": 1.75,
-      "atr": 8.661003660851544e-05,
-      "sl_atr": 1.5700606570253386,
-      "ema50": 0.0,
-      "ema200": 0.0,
-      "rsi": 46.89081784397948,
-      "adx": 0.0,
-      "volume_ratio": 1.888958623540037,
-      "rsi_deadzone": false,
-      "regime": "BULL",
-      "structure": "CHOCH",
-      "bos": "CHOCH",
-      "pullback": null,
-      "score": null,
-      "score_reasons": [],
-      "risk_usdt": 4.0,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "monitor_tf_ms": 900000
-    },
-    {
-      "signal_id": "SAHARA-USDT-SWAP|LONG|1793235600000|SMC",
-      "symbol": "SAHARA-USDT-SWAP",
-      "direction": "LONG",
-      "timeframe": "15m",
-      "setup": "SMC_SCALP",
-      "note": "SMC CHOCH BEAR | Sweep low @ 0.007869 | OB [0.007854-0.007895] | Disp bar 197 | RSI 55.7 | Vol 1.92x",
-      "signal_candle_time": 1793235600000,
-      "signal_candle_iso": "2026-10-29T01:00:00+00:00",
-      "created_at": "2026-10-29T01:21:53.612632+00:00",
-      "entry": 0.007914,
-      "sl": 0.007843,
-      "tp": 0.008038,
-      "rr": 1.75,
-      "atr": 3.534054816503947e-05,
-      "sl_atr": 1.9977665349105636,
-      "ema50": 0.0,
-      "ema200": 0.0,
-      "rsi": 55.65353295345861,
-      "adx": 0.0,
-      "volume_ratio": 1.9233339336844775,
-      "rsi_deadzone": false,
-      "regime": "BEAR",
-      "structure": "CHOCH",
-      "bos": "CHOCH",
-      "pullback": null,
-      "score": null,
-      "score_reasons": [],
-      "risk_usdt": 4.0,
-      "status": "OPEN",
-      "exit_price": null,
-      "exit_time": null,
-      "result_r": null,
-      "result": null,
-      "monitor_tf_ms": 900000
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "signal_id": "SAND-USDT-SWAP|LONG|1793222100000|SMC",
@@ -109,49 +36,119 @@
       "result_r": -1.0,
       "result": "LOSS",
       "monitor_tf_ms": 900000
+    },
+    {
+      "signal_id": "AI-USDT-SWAP|SHORT|1793226600000|SMC",
+      "symbol": "AI-USDT-SWAP",
+      "direction": "SHORT",
+      "timeframe": "15m",
+      "setup": "SMC_SCALP",
+      "note": "SMC CHOCH BULL | Sweep high @ 0.01794 | OB [0.01793-0.018] | Disp bar 197 | RSI 46.9 | Vol 1.89x",
+      "signal_candle_time": 1793226600000,
+      "signal_candle_iso": "2026-10-28T22:30:00+00:00",
+      "created_at": "2026-10-28T22:58:57.706084+00:00",
+      "entry": 0.01789,
+      "sl": 0.01803,
+      "tp": 0.01765,
+      "rr": 1.75,
+      "atr": 8.661003660851544e-05,
+      "sl_atr": 1.5700606570253386,
+      "ema50": 0.0,
+      "ema200": 0.0,
+      "rsi": 46.89081784397948,
+      "adx": 0.0,
+      "volume_ratio": 1.888958623540037,
+      "rsi_deadzone": false,
+      "regime": "BULL",
+      "structure": "CHOCH",
+      "bos": "CHOCH",
+      "pullback": null,
+      "score": null,
+      "score_reasons": [],
+      "risk_usdt": 4.0,
+      "status": "CLOSED",
+      "exit_price": 0.01803,
+      "exit_time": "2026-10-29T01:35:00+00:00",
+      "result_r": -1.0,
+      "result": "LOSS",
+      "monitor_tf_ms": 900000
+    },
+    {
+      "signal_id": "SAHARA-USDT-SWAP|LONG|1793235600000|SMC",
+      "symbol": "SAHARA-USDT-SWAP",
+      "direction": "LONG",
+      "timeframe": "15m",
+      "setup": "SMC_SCALP",
+      "note": "SMC CHOCH BEAR | Sweep low @ 0.007869 | OB [0.007854-0.007895] | Disp bar 197 | RSI 55.7 | Vol 1.92x",
+      "signal_candle_time": 1793235600000,
+      "signal_candle_iso": "2026-10-29T01:00:00+00:00",
+      "created_at": "2026-10-29T01:21:53.612632+00:00",
+      "entry": 0.007914,
+      "sl": 0.007843,
+      "tp": 0.008038,
+      "rr": 1.75,
+      "atr": 3.534054816503947e-05,
+      "sl_atr": 1.9977665349105636,
+      "ema50": 0.0,
+      "ema200": 0.0,
+      "rsi": 55.65353295345861,
+      "adx": 0.0,
+      "volume_ratio": 1.9233339336844775,
+      "rsi_deadzone": false,
+      "regime": "BEAR",
+      "structure": "CHOCH",
+      "bos": "CHOCH",
+      "pullback": null,
+      "score": null,
+      "score_reasons": [],
+      "risk_usdt": 4.0,
+      "status": "CLOSED",
+      "exit_price": 0.007843,
+      "exit_time": "2026-10-29T01:30:00+00:00",
+      "result_r": -1.0,
+      "result": "LOSS",
+      "monitor_tf_ms": 900000
     }
   ],
-  "last_report_ts": 1793223518.9522362,
+  "last_report_ts": 1793240701.915942,
   "smc_rej": {
-    "scans": 7,
-    "pairs": 1041,
-    "signals": 3,
+    "scans": 1,
+    "pairs": 147,
+    "signals": 0,
     "stages": {
-      "Displacement": 221,
-      "Struktur": 222,
-      "Sweep": 194,
-      "Retest": 226,
-      "Konfirmasi": 162,
-      "Volume": 12,
-      "SL/RR": 1
+      "Retest": 32,
+      "Sweep": 30,
+      "Struktur": 23,
+      "Displacement": 51,
+      "Konfirmasi": 11
     },
     "near": [
       {
-        "depth": 9,
-        "text": "ONDO-USDT-SWAP → SL/RR: SHORT SL 2.68 ATR (perlu 0.35-2.5)"
+        "depth": 6,
+        "text": "NOT-USDT-SWAP → Konfirmasi: LONG konfirmasi terlalu lama (6 bar lalu)"
       },
       {
-        "depth": 8,
-        "text": "ANIME-USDT-SWAP → Volume: SHORT CHOCH volume 0.28x (min 0.75x)"
+        "depth": 6,
+        "text": "CP-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
       },
       {
-        "depth": 8,
-        "text": "WLD-USDT-SWAP → Volume: SHORT CHOCH volume 0.57x (min 0.75x)"
+        "depth": 6,
+        "text": "ZIL-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (1 bar lalu)"
       },
       {
-        "depth": 8,
-        "text": "PIPPIN-USDT-SWAP → Volume: SHORT CHOCH volume 0.32x (min 0.75x)"
+        "depth": 6,
+        "text": "XDP-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (3 bar lalu)"
       },
       {
-        "depth": 8,
-        "text": "MOODENG-USDT-SWAP → Volume: SHORT CHOCH volume 0.29x (min 0.75x)"
+        "depth": 6,
+        "text": "AEON-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (1 bar lalu)"
       },
       {
-        "depth": 8,
-        "text": "FARTCOIN-USDT-SWAP → Volume: SHORT CHOCH volume 0.42x (min 0.75x)"
+        "depth": 6,
+        "text": "BIGTIME-USDT-SWAP → Konfirmasi: SHORT konfirmasi terlalu lama (4 bar lalu)"
       }
     ]
   },
-  "last_smc_candle": 1793235600000,
+  "last_smc_candle": 1793239200000,
   "last_online_day": "2026-10-29"
 }
