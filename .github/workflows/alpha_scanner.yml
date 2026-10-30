@@ -1,4 +1,4 @@
-name: Frozen Breakout Scanner (15m)
+name: Alpha 1200 Scanner (15m)
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -15,8 +15,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: 🧊 Scan Sinyal
+      - name:  Run Alpha Bot
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python frozen_bot.py
+        run: python alpha_bot.py
