@@ -1,44 +1,35 @@
 #!/usr/bin/env python3
 """
-BTC 15M — FROZEN BREAKOUT V1.0 | OKX EDITION
-Spesifikasi: Panduan Teknis Detail, 30 Oktober 2026
+ALPHA 1200 GOD MODE - MONSTER TREND RIDER
+Spesifikasi: 30 Oktober 2026
+LONG ONLY | Multi-Timeframe (4H Trend + 15M Breakout)
 Data Source: OKX Public API (BTC-USDT-SWAP)
-Fitur: Kirim sinyal + Pantau SL/Trailing otomatis + Jurnal otomatis.
 """
-import json, os, sys, time, math, statistics, urllib.request, urllib.parse
+import json, os, sys, time, math, urllib.request, urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
 # ============================================================
 # KONFIGURASI
 # ============================================================
-# OKX Instrument ID untuk Perpetual Swap
-INST_ID = "BTC-USDT-SWAP" 
-TIMEFRAME = "15m"
-
-STATE_FILE = Path(__file__).parent / "frozen_state.json"
-JOURNAL_FILE = Path(__file__).parent / "frozen_journal.json"
+INST_ID = "BTC-USDT-SWAP"
+STATE_FILE = Path(__file__).parent / "alpha_state.json"
+JOURNAL_FILE = Path(__file__).parent / "alpha_journal.json"
 
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Parameter V1.0 (DIKUNCI)
-P_ATR_PERIOD = 14
-P_RANGE48 = 48
-P_EMA400 = 400
-P_EMA144 = 144
-P_SLOPE_LOOKBACK = 72
-P_VR_MEDIAN_LOOKBACK = 192
-P_RETURN16H_CANDLES = 64
-P_RETURN16H_MAX = 0.02
-P_VOL_MULT = 1.5
-P_BREAKOUT_MULT = 0.30
-P_D_MULT = 2.5
-P_MAX_MONTHLY = 15
-P_FEE_PCT = 0.0005
-
-SIGNAL_HOUR_START = 0
-SIGNAL_HOUR_END = 7
+# Parameter Terkunci (PDF Section 2)
+RISK_PCT = 0.005      # 0.5% ekuitas per trade
+FEE_PCT = 0.0007      # 0.07% per sisi
+MAX_MONTHLY = 15
+COOLDOWN_BARS = 48    # 48 bar 15M setelah stop
+ATR_PERIOD = 14
+HIGH_LOOKBACK = 96
+VOL_LOOKBACK = 48
+EMA_TREND_FAST = 50   # 4H
+EMA_TREND_SLOW = 200  # 4H
+STOP_MULT = 3.0       # 3 x ATR14
 
 # ============================================================
 # UTILS: TELEGRAM, STATE, JOURNAL
@@ -53,7 +44,8 @@ def load_state():
     if STATE_FILE.exists():
         with open(STATE_FILE, 'r') as f: return json.load(f)
     now = datetime.now(timezone.utc)
-    return {"active_position": False, "current_month": now.month, "month_entries": 0, "active_trade": None}
+    return {"active": False, "pending_entry": False, "entry_price": 0, "stop_price": 0, 
+            "last_stop_idx": -100, "month_entries": 0, "current_month": now.month, "trade_start_idx": 0}
 
 def save_state(st):
     with open(STATE_FILE, 'w') as f: json.dump(st, f, indent=2)
@@ -69,61 +61,39 @@ def append_journal(entry):
     with open(JOURNAL_FILE, 'w') as f: json.dump(journal, f, indent=2)
 
 # ============================================================
-# OKX API FETCHER (Dengan Pagination)
+# OKX API FETCHER (Pagination)
 # ============================================================
-def fetch_klines(limit=1500):
-    """Mengambil data OHLCV dari OKX dengan pagination untuk mendapatkan 1500 candle CLOSED."""
+def fetch_okx_data(bar, limit):
     all_candles = []
-    after = ""  # OKX 'after' = ambil data yang lebih tua dari timestamp ini
+    after = ""
+    target = limit + 50
     
-    print(f"[OKX] Mengambil {limit} candle untuk {INST_ID}...")
-    
-    # Kita fetch lebih banyak sedikit untuk memastikan kita punya cukup candle closed
-    target_fetch = limit + 100 
-    
-    while len(all_candles) < target_fetch:
-        url = f"https://www.okx.com/api/v5/market/candles?instId={INST_ID}&bar={TIMEFRAME}&limit=100"
-        if after:
-            url += f"&after={after}"
+    while len(all_candles) < target:
+        url = f"https://www.okx.com/api/v5/market/candles?instId={INST_ID}&bar={bar}&limit=100"
+        if after: url += f"&after={after}"
         
-        req = urllib.request.Request(url, headers={"User-Agent": "FrozenBot/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "AlphaBot/1.0"})
         with urllib.request.urlopen(req, timeout=30) as r:
             res = json.loads(r.read())
-            if res.get("code") != "0":
-                raise Exception(f"OKX API Error: {res.get('msg')}")
-            
+            if res.get("code") != "0": raise Exception(f"OKX Error: {res.get('msg')}")
             data = res.get("data", [])
-            if not data:
-                break
+            if not data: break
             
-            # OKX Format: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-            # confirm="1" berarti candle sudah close. Kita hanya ambil yang sudah close!
-            closed_data = [c for c in data if c[8] == "1"]
-            all_candles.extend(closed_data)
-            
-            # Set 'after' ke timestamp tertua di batch ini (OKX urutkan dari terbaru)
+            # Filter hanya candle closed (confirm="1")
+            closed = [c for c in data if c[8] == "1"]
+            all_candles.extend(closed)
             after = data[-1][0]
-            
-        time.sleep(0.2) # Jeda sopan untuk rate limit OKX
+        time.sleep(0.2)
 
-    # Urutkan dari yang tertua ke terbaru (index 0 = tertua)
     all_candles.sort(key=lambda x: int(x[0]))
-    
-    # Konversi ke format standar bot: [ts, o, h, l, c, v]
     result = []
     for c in all_candles:
-        result.append([
-            int(c[0]),      # ts (ms)
-            float(c[1]),    # o
-            float(c[2]),    # h
-            float(c[3]),    # l
-            float(c[4]),    # c
-            float(c[5])     # v
-        ])
-        
-    print(f"[OKX] Berhasil mengambil {len(result)} candle closed.")
-    return result[-limit:] # Kembalikan tepat sebanyak 'limit'
+        result.append([int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])])
+    return result[-limit:]
 
+# ============================================================
+# INDIKATOR
+# ============================================================
 def calc_ema(data, span):
     n = len(data)
     ema = [None] * n
@@ -135,280 +105,201 @@ def calc_ema(data, span):
             ema[i] = data[i] * k + ema[i-1] * (1 - k)
     return ema
 
-# ============================================================
-# MESIN MONITORING POSISI (AUTO-EXIT)
-# ============================================================
-def monitor_position():
-    state = load_state()
-    if not state.get("active_position") or not state.get("active_trade"):
-        return False
-
-    trade = state["active_trade"]
-    side = trade["side"]
-    entry = trade["entry_fill"]
-    current_stop = trade["current_stop"]
-    D = trade["D"]
-    atr_signal = trade["ATR_signal"]
-    trailing_active = trade.get("trailing_active", False)
-    highest_high = trade.get("highest_high", entry)
-    lowest_low = trade.get("lowest_low", entry)
-
-    try:
-        raw = fetch_klines(100)
-    except Exception as e:
-        print(f"[MONITOR ERROR] {e}")
-        return False
-
-    n = len(raw)
-    t = n - 2
-    o = float(raw[t][1]); h = float(raw[t][2]); l = float(raw[t][3]); c = float(raw[t][4])
-    ts_exit = int(raw[t][0])
-    exit_time_utc = datetime.fromtimestamp(ts_exit / 1000, tz=timezone.utc)
-
-    exit_price = None
-    exit_reason = ""
-    intrabar_ambiguous = False
-
-    # 1. Cek Gap Open
-    if side == "LONG" and o < current_stop:
-        exit_price = o; exit_reason = "SL_GAP_DOWN"
-    elif side == "SHORT" and o > current_stop:
-        exit_price = o; exit_reason = "SL_GAP_UP"
-    else:
-        # 2. Cek sentuhan stop lama
-        if (side == "LONG" and l <= current_stop) or (side == "SHORT" and h >= current_stop):
-            exit_price = current_stop; exit_reason = "SL_HIT"
-        else:
-            # 3. Update ekstrem harga
-            if side == "LONG": highest_high = max(highest_high, h)
-            else: lowest_low = min(lowest_low, l)
-
-            # 4. Cek trigger trailing (+6R)
-            if not trailing_active:
-                if (side == "LONG" and h >= entry + 6 * D) or (side == "SHORT" and l <= entry - 6 * D):
-                    trailing_active = True
-                    trade["trailing_activation_time"] = exit_time_utc.isoformat()
-            
-            # 5. Hitung trailing stop baru
-            if trailing_active:
-                if side == "LONG":
-                    candidate_stop = highest_high - 12 * atr_signal
-                    new_stop = max(current_stop, candidate_stop)
-                else:
-                    candidate_stop = lowest_low + 12 * atr_signal
-                    new_stop = min(current_stop, candidate_stop)
-                
-                if (side == "LONG" and l <= new_stop) or (side == "SHORT" and h >= new_stop):
-                    exit_price = new_stop
-                    exit_reason = "TRAILING_HIT"
-                    intrabar_ambiguous = True
-                else:
-                    trade["current_stop"] = new_stop
-                    trade["highest_high"] = highest_high
-                    trade["lowest_low"] = lowest_low
-                    trade["trailing_active"] = True
-                    save_state(state)
-                    return False
-
-    # === EXIT TERJADI ===
-    fee_entry = P_FEE_PCT * entry
-    fee_exit = P_FEE_PCT * exit_price
-    side_mult = 1 if side == "LONG" else -1
-    r_net = (side_mult * (exit_price - entry) - fee_entry - fee_exit) / D
-
-    journal_entry = {
-        "signal_time_utc": trade["signal_time"],
-        "entry_time_utc": trade.get("entry_time", trade["signal_time"]),
-        "exit_time_utc": exit_time_utc.isoformat(),
-        "side": side,
-        "venue": "OKX",
-        "symbol": INST_ID,
-        "entry_fill": entry,
-        "exit_fill": exit_price,
-        "initial_stop": trade["initial_stop"],
-        "final_stop": exit_price,
-        "D": D,
-        "R_net": round(r_net, 4),
-        "exit_reason": exit_reason,
-        "intrabar_ambiguity_flag": intrabar_ambiguous,
-        "month_entry_count": state["month_entries"]
-    }
-    append_journal(journal_entry)
-
-    emoji = "✅" if r_net > 0 else ("⚪" if r_net == 0 else "❌")
-    msg = (
-        f"{emoji} <b>🧊 FROZEN EXIT</b>\n\n"
-        f"Side: <b>{side}</b>\n"
-        f"Waktu Exit: <code>{exit_time_utc.strftime('%Y-%m-%d %H:%M')}</code> UTC\n"
-        f"Alasan: <b>{exit_reason}</b> {'(Ambiguous)' if intrabar_ambiguous else ''}\n\n"
-        f" Entry: <code>{entry:,.2f}</code>\n"
-        f" Exit: <code>{exit_price:,.2f}</code>\n"
-        f"📏 D (1R): <code>{D:,.2f}</code>\n"
-        f"💰 <b>R_net: {r_net:+.4f}R</b>\n\n"
-        f"🔄 Posisi ditutup. Bot siap mencari sinyal baru."
-    )
-    tg_send(msg)
-    print(f"✅ POSISI {side} DITUTUP: {exit_reason} | R_net: {r_net:+.4f}")
-
-    state["active_position"] = False
-    state["active_trade"] = None
-    save_state(state)
-    return True
-
-# ============================================================
-# MESIN SCANNER SINYAL
-# ============================================================
-def scan_signals():
-    print(f"[{datetime.now(timezone.utc).isoformat()}] Scanning for new signals...")
-    try:
-        raw = fetch_klines(1500)
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        tg_send(f"️ <b>FROZEN BOT ERROR</b>\n\nGagal mengambil data dari OKX.\nError: {e}")
-        return
-
-    n = len(raw)
-    # Validasi gap 220 candle terakhir
-    for i in range(n - 221, n - 1):
-        if int(raw[i+1][0]) - int(raw[i][0]) != 900000:
-            print("[SKIP] Gap data terdeteksi.")
-            return
-
-    timestamps = [int(c[0]) for c in raw]
-    opens = [float(c[1]) for c in raw]
-    highs = [float(c[2]) for c in raw]
-    lows = [float(c[3]) for c in raw]
-    closes = [float(c[4]) for c in raw]
-    volumes = [float(c[5]) for c in raw]
-
-    # TR & ATR14
-    trs = [0.0]
+def calc_atr_wilder(high, low, close, period=14):
+    n = len(close)
+    tr = [0.0] * n
     for i in range(1, n):
-        trs.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+        tr[i] = max(high[i] - low[i], abs(high[i] - close[i-1]), abs(low[i] - close[i-1]))
     
     atr = [None] * n
-    for i in range(P_ATR_PERIOD - 1, n):
-        atr[i] = sum(trs[i - P_ATR_PERIOD + 1:i + 1]) / P_ATR_PERIOD
+    # Wilder Smoothing: ATR[t] = (ATR[t-1] * (period-1) + TR[t]) / period
+    if n >= period:
+        atr[period - 1] = sum(tr[:period]) / period
+        for i in range(period, n):
+            atr[i] = (atr[i-1] * (period - 1) + tr[i]) / period
+    return atr
 
-    ema400 = calc_ema(closes, P_EMA400)
-    ema144 = calc_ema(closes, P_EMA144)
+def map_4h_ema_to_15m(ema4h_list, ts4h_list, ts15m_list):
+    """Memetakan nilai EMA 4H ke timeline 15M (menggunakan EMA candle 4H terakhir yang selesai)"""
+    mapped = []
+    idx4h = 0
+    for ts15 in ts15m_list:
+        # Cari EMA 4H terakhir yang timestamp-nya <= timestamp 15M ini
+        while idx4h < len(ts4h_list) - 1 and ts4h_list[idx4h + 1] <= ts15:
+            idx4h += 1
+        
+        if ts4h_list[idx4h] <= ts15 and ema4h_list[idx4h] is not None:
+            mapped.append(ema4h_list[idx4h])
+        else:
+            mapped.append(None)
+    return mapped
 
-    t = n - 2
-    ts_t = timestamps[t]
-    candle_time_utc = datetime.fromtimestamp(ts_t / 1000, tz=timezone.utc)
-
-    # 1. Filter Waktu
-    if not (SIGNAL_HOUR_START <= candle_time_utc.hour <= SIGNAL_HOUR_END):
-        print(f"[SKIP] Di luar jam sinyal ({candle_time_utc.hour}:00 UTC)")
-        return
-
-    if atr[t] is None or atr[t] <= 0: return
-
-    # 2. Range48 & Volume48
-    hh48 = max(highs[t - P_RANGE48 : t])
-    ll48 = min(lows[t - P_RANGE48 : t])
-    vol48 = sum(volumes[t - P_RANGE48 : t]) / P_RANGE48
-
-    # 3. Slope EMA144
-    if ema144[t] is None or ema144[t - P_SLOPE_LOOKBACK] is None or ema144[t - P_SLOPE_LOOKBACK] == 0:
-        return
-    slope_144 = (ema144[t] / ema144[t - P_SLOPE_LOOKBACK]) - 1
-
-    # 4. VR & Median VR
-    vr = [None] * n
-    for i in range(n):
-        if atr[i] is not None and closes[i] != 0: vr[i] = atr[i] / closes[i]
+# ============================================================
+# LOGIKA UTAMA
+# ============================================================
+def run_bot():
+    print(f"[{datetime.now(timezone.utc).isoformat()}] ALPHA 1200 GOD MODE SCAN...")
     
-    vr_vals = [vr[i] for i in range(t - P_VR_MEDIAN_LOOKBACK, t) if vr[i] is not None]
-    if len(vr_vals) < P_VR_MEDIAN_LOOKBACK: return
-    vr_median = statistics.median(vr_vals)
-    vr_t = vr[t]
+    # 1. Fetch Data
+    try:
+        data_4h = fetch_okx_data("4H", 300)  # Butuh ~250 untuk EMA200
+        data_15m = fetch_okx_data("15m", 1000) # Butuh ~100 untuk High96 + warmup
+    except Exception as e:
+        print(f"[ERROR] {e}"); return
 
-    # 5. Return 16 jam
-    ret_16h = abs(closes[t] / closes[t - P_RETURN16H_CANDLES] - 1)
+    # 2. Hitung Indikator 4H
+    close_4h = [c[4] for c in data_4h]
+    ema50_4h = calc_ema(close_4h, EMA_TREND_FAST)
+    ema200_4h = calc_ema(close_4h, EMA_TREND_SLOW)
+    ts_4h = [c[0] for c in data_4h]
 
-    # 6. Filter Umum
-    rejections = []
-    if volumes[t] <= P_VOL_MULT * vol48: rejections.append(f"Vol <= {P_VOL_MULT}x")
-    if vr_t <= vr_median: rejections.append("VR <= Median")
-    if ret_16h >= P_RETURN16H_MAX: rejections.append(f"Return16h >= 2%")
+    # 3. Hitung Indikator 15M
+    n = len(data_15m)
+    ts_15m = [c[0] for c in data_15m]
+    o_15m = [c[1] for c in data_15m]
+    h_15m = [c[2] for c in data_15m]
+    l_15m = [c[3] for c in data_15m]
+    c_15m = [c[4] for c in data_15m]
+    v_15m = [c[5] for c in data_15m]
+
+    atr14 = calc_atr_wilder(h_15m, l_15m, c_15m, ATR_PERIOD)
     
-    if rejections:
-        append_journal({"time": candle_time_utc.isoformat(), "status": "REJECTED", "reason": "; ".join(rejections)})
+    # Map EMA 4H ke 15M
+    ema50_15m = map_4h_ema_to_15m(ema50_4h, ts_4h, ts_15m)
+    ema200_15m = map_4h_ema_to_15m(ema200_4h, ts_4h, ts_15m)
+
+    # 4. Tentukan Index Candle
+    # t_sig = n-2 (Candle sinyal yang baru saja close)
+    # t_curr = n-1 (Candle saat ini yang sedang berjalan / Open untuk entry)
+    t_sig = n - 2
+    t_curr = n - 1
+    
+    if t_sig < HIGH_LOOKBACK + 10:
+        print("[SKIP] Data belum cukup untuk warmup.")
         return
 
-    # 7. Syarat Entry
-    side = None; reason = ""
-    if (closes[t] > ema400[t] and closes[t] > opens[t] and closes[t] > hh48 and 
-        (closes[t] - hh48) / atr[t] >= P_BREAKOUT_MULT and slope_144 < 0):
-        side = "LONG"; reason = "Breakout HH48 + Bullish + Slope144 Negatif"
-    elif (closes[t] < ema400[t] and closes[t] < opens[t] and closes[t] < ll48 and 
-          (ll48 - closes[t]) / atr[t] >= P_BREAKOUT_MULT and slope_144 > 0):
-        side = "SHORT"; reason = "Breakdown LL48 + Bearish + Slope144 Positif"
-
-    if not side:
-        append_journal({"time": candle_time_utc.isoformat(), "status": "REJECTED", "reason": "Tidak memenuhi syarat LONG/SHORT"})
-        return
-
-    # 8. Hitung Level
-    D = P_D_MULT * atr[t]
-    entry_price = opens[n - 1]
-    stop_loss = entry_price - D if side == "LONG" else entry_price + D
-    trail_trigger = entry_price + (6 * D) if side == "LONG" else entry_price - (6 * D)
-
-    # 9. Cek Kuota Bulanan
     state = load_state()
-    if state["current_month"] != candle_time_utc.month:
+    
+    # Reset Bulanan
+    now_utc = datetime.now(timezone.utc)
+    if state["current_month"] != now_utc.month:
         state["month_entries"] = 0
-        state["current_month"] = candle_time_utc.month
+        state["current_month"] = now_utc.month
 
-    if state["month_entries"] >= P_MAX_MONTHLY:
-        print(f"[SKIP] Kuota sinyal bulan ini sudah {state['month_entries']}/{P_MAX_MONTHLY}.")
-        append_journal({"time": candle_time_utc.isoformat(), "status": "REJECTED", "reason": "Kuota bulanan tercapai"})
+    # ============================================================
+    # A. MANAJEMEN POSISI (Jika ada posisi terbuka)
+    # ============================================================
+    if state["active"]:
+        exit_price = None
+        exit_reason = ""
+        
+        # 1. Cek Gap (PDF Section 5.4)
+        if ts_15m[t_curr] - ts_15m[t_sig] > 15 * 60 * 1000 + 60000: # Toleransi 1 menit
+            exit_price = o_15m[t_curr]
+            exit_reason = "GAP_OPEN"
+        
+        # 2. Cek Stop Loss tersentuh di candle saat ini (PDF Section 5.2)
+        if not exit_reason and l_15m[t_curr] <= state["stop_price"]:
+            # Exit di min(Open, Stop) untuk simulasi konservatif
+            exit_price = min(o_15m[t_curr], state["stop_price"])
+            exit_reason = "STOP_HIT"
+        
+        # 3. Cek Trend Exit dari candle sinyal terakhir (PDF Section 5.3)
+        # Jika Close[t_sig] < EMA50 4H, exit di Open[t_curr]
+        if not exit_reason and ema50_15m[t_sig] is not None:
+            if c_15m[t_sig] < ema50_15m[t_sig]:
+                exit_price = o_15m[t_curr]
+                exit_reason = "TREND_EXIT"
+
+        if exit_reason:
+            # Hitung R Net
+            fee_entry = state["entry_price"] * FEE_PCT
+            fee_exit = exit_price * FEE_PCT
+            stop_dist = state["entry_price"] - state["stop_price"] # D
+            r_net = (exit_price - state["entry_price"] - fee_entry - fee_exit) / stop_dist
+            
+            # Update State
+            state["active"] = False
+            state["pending_entry"] = False
+            if exit_reason == "STOP_HIT":
+                state["last_stop_idx"] = t_curr
+            save_state(state)
+            
+            # Jurnal & Notif
+            append_journal({
+                "time": datetime.fromtimestamp(ts_15m[t_curr]/1000, tz=timezone.utc).isoformat(),
+                "side": "LONG", "entry": state["entry_price"], "exit": exit_price,
+                "reason": exit_reason, "R_net": round(r_net, 4)
+            })
+            
+            emoji = "✅" if r_net > 0 else ""
+            tg_send(f"{emoji} <b>ALPHA 1200 EXIT</b>\n\nAlasan: <b>{exit_reason}</b>\nEntry: <code>{state['entry_price']:,.0f}</code>\nExit: <code>{exit_price:,.0f}</code>\nR_net: <b>{r_net:+.3f}R</b>")
+            print(f"EXIT: {exit_reason} | R: {r_net:+.3f}")
+            return # Selesai siklus ini
+
+    # ============================================================
+    # B. EKSEKUSI PENDING ENTRY
+    # ============================================================
+    if state["pending_entry"]:
+        entry_price = o_15m[t_curr]
+        stop_price = entry_price - (STOP_MULT * atr14[t_sig])
+        
+        state["active"] = True
+        state["pending_entry"] = False
+        state["entry_price"] = entry_price
+        state["stop_price"] = stop_price
+        state["trade_start_idx"] = t_curr
+        state["month_entries"] += 1
+        save_state(state)
+        
+        tg_send(f"🟢 <b>ALPHA 1200 ENTRY</b>\n\nHarga: <code>{entry_price:,.0f}</code>\nStop: <code>{stop_price:,.0f}</code>\nATR14: <code>{atr14[t_sig]:,.0f}</code>")
+        print(f"ENTRY LONG @ {entry_price:,.0f} | SL: {stop_price:,.0f}")
         return
 
-    # 10. Simpan State
-    state["month_entries"] += 1
-    state["active_position"] = True
-    state["active_trade"] = {
-        "signal_time": candle_time_utc.isoformat(),
-        "side": side,
-        "entry_fill": entry_price,
-        "current_stop": stop_loss,
-        "initial_stop": stop_loss,
-        "D": D,
-        "ATR_signal": atr[t],
-        "trailing_active": False,
-        "highest_high": entry_price,
-        "lowest_low": entry_price
-    }
+    # ============================================================
+    # C. SCANNER SINYAL (PDF Section 4 & 5)
+    # ============================================================
+    # Cek Syarat pada Candle Sinyal (t_sig)
+    
+    # 1. Filter Tren 4H
+    if ema50_15m[t_sig] is None or ema200_15m[t_sig] is None:
+        return
+    if not (ema50_15m[t_sig] > ema200_15m[t_sig]):
+        return # Tren tidak bullish
+
+    # 2. Breakout 15M (Close > Max High 96 sebelumnya)
+    high96 = max(h_15m[t_sig - HIGH_LOOKBACK : t_sig])
+    if not (c_15m[t_sig] > high96):
+        return
+
+    # 3. Volume 15M (Vol > Rata-rata 48 sebelumnya)
+    vol48 = sum(v_15m[t_sig - VOL_LOOKBACK : t_sig]) / VOL_LOOKBACK
+    if not (v_15m[t_sig] > vol48):
+        return
+
+    # 4. Alignment (Close > EMA50 4H)
+    if not (c_15m[t_sig] > ema50_15m[t_sig]):
+        return
+
+    # 5. ATR Valid
+    if atr14[t_sig] is None or atr14[t_sig] <= 0:
+        return
+
+    # 6. Cooldown (PDF Section 9: 48 bars setelah stop)
+    if (t_sig - state["last_stop_idx"]) < COOLDOWN_BARS:
+        return
+
+    # 7. Kuota Bulanan
+    if state["month_entries"] >= MAX_MONTHLY:
+        return
+
+    # SEMUA SYARAT TERPENUHI -> Jadwalkan Entry
+    state["pending_entry"] = True
     save_state(state)
+    
+    # Kirim Notifikasi Sinyal (Akan dieksekusi di siklus berikutnya / Open candle saat ini)
+    tg_send(f"🔍 <b>ALPHA 1200 SIGNAL DETECTED</b>\n\nBreakout 15M terdeteksi!\nClose: <code>{c_15m[t_sig]:,.0f}</code>\nHigh96: <code>{high96:,.0f}</code>\nVol Ratio: {v_15m[t_sig]/vol48:.2f}x\n\nMenunggu eksekusi di Open candle berikutnya...")
+    print("SINYAL TERDETEKSI! Pending entry...")
 
-    # 11. Kirim Telegram
-    emoji = "🟢" if side == "LONG" else "🔴"
-    msg = (
-        f"{emoji} <b> FROZEN BREAKOUT V1.0 (OKX)</b>\n\n"
-        f"Side: <b>{side}</b>\n"
-        f"Waktu: <code>{candle_time_utc.strftime('%Y-%m-%d %H:%M')}</code> UTC\n\n"
-        f" <b>Entry (Open t+1):</b> <code>{entry_price:,.2f}</code>\n"
-        f"🛑 <b>Stop Loss Awal:</b> <code>{stop_loss:,.2f}</code>\n"
-        f"📏 <b>D (1R = 2.5×ATR):</b> <code>{D:,.2f}</code>\n"
-        f"🔄 <b>Trailing Trigger (+6R):</b> <code>{trail_trigger:,.2f}</code>\n\n"
-        f"📊 <b>Indikator:</b>\n"
-        f"• EMA400: {ema400[t]:,.2f} | Slope144: {slope_144*100:.3f}%\n"
-        f"• HH48/LL48: {hh48:,.2f} / {ll48:,.2f}\n"
-        f"• Vol ratio: {volumes[t]/vol48:.2f}× | VR: {vr_t:.5f}\n\n"
-        f"📝 <b>Alasan:</b> {reason}\n"
-        f"🔢 <b>Kuota Bulan:</b> {state['month_entries']}/{P_MAX_MONTHLY}\n\n"
-        f"⚠️ <i>Bot akan memantau SL/Trailing otomatis via OKX.</i>"
-    )
-    tg_send(msg)
-    print(f"✅ SINYAL {side} TERKIRIM & POSISI DIKUNCI!")
-
-# ============================================================
-# MAIN
-# ============================================================
 if __name__ == "__main__":
-    exited = monitor_position()
-    if not exited:
-        scan_signals()
+    run_bot()
