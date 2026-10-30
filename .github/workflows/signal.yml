@@ -1,78 +1,22 @@
-
-name: BTC OKX Signal Bot
-
+name: Frozen Breakout Scanner (15m)
 on:
   schedule:
-    - cron: "0 * * * *"
-
+    - cron: '*/15 * * * *'
   workflow_dispatch:
-    inputs:
-      test:
-        description: "Test Telegram"
-        required: false
-        type: boolean
-        default: false
-
 permissions:
   contents: read
-
-concurrency:
-  group: btc-okx-signal
-  cancel-in-progress: false
-
 jobs:
-  signal:
-    name: Run BTC OKX Signal
+  scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Python
+      - name: 🐍 Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Restore signal history
-        uses: actions/cache/restore@v4
-        with:
-          path: signal_history.json
-          key: signal-history-${{ github.run_id }}
-          restore-keys: |
-            signal-history-
-
-      - name: Run signal bot
+          python-version: '3.11'
+      - name: 🧊 Scan Sinyal
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TEST_MODE: ${{ inputs.test }}
-        run: |
-          if [ "$TEST_MODE" = "true" ]; then
-            python main.py --test
-          else
-            python main.py
-          fi
-
-      - name: Save signal history
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: signal_history.json
-          key: signal-history-${{ github.run_id }}
-
-      - name: Upload bot log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bot-log-${{ github.run_id }}
-          path: bot.log
-          if-no-files-found: ignore
-          retention-days: 7
+        run: python frozen_bot.py
