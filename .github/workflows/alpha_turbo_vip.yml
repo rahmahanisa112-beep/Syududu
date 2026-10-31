@@ -11,11 +11,11 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
-      - name:  Python
+      - name: 🐍 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name:  Run Alpha Turbo VIP
+      - name: 🚀 Run Alpha Turbo VIP
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
