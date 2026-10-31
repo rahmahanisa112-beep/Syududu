@@ -13,7 +13,7 @@ from pathlib import Path
 STATE_FILE = Path(__file__).parent / "dual_strategy_state.json"
 JOURNAL_FILE = Path(__file__).parent / "dual_strategy_journal.json"
 
-TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TG_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID")
 
 TOP_N_PAIRS = 100
